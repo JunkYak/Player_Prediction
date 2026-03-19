@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+venv/
+.env/
+
+# Data files
+data/*.parquet
+data/*.csv
+
+# Models
+models/*.pkl
+
+# OS junk
+.DS_Store
+Thumbs.db
