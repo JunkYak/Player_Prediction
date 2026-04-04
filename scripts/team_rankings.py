@@ -1,60 +1,51 @@
 import pandas as pd
-
-# ==============================
-# LOAD PREDICTIONS
-# ==============================
-
-df = pd.read_parquet("data/predicted_ratings.parquet")
-
-print("Loaded predictions:", df.shape)
-
-# ==============================
-# CLEAN (just in case)
-# ==============================
-
-df = df[
-    (df["teamId"] > 0) &
-    (df["playerName"].notna()) &
-    (df["playerName"] != "")
-]
-
-# ==============================
-# GROUP BY TEAM
-# ==============================
-
-teams = df.groupby("teamId")
-
-# ==============================
-# DISPLAY TEAM-WISE RANKINGS
-# ==============================
-
-for team_id, group in teams:
-
-    print(f"\n==============================")
-    print(f"TEAM: {team_id}")
-    print(f"==============================")
-
-    group = group.sort_values(
-        "predicted_rating",
-        ascending=False
-    )
-
-    for _, row in group.iterrows():
-        print(f"{row['playerName']:<20} {row['predicted_rating']:.2f}")
-
-# ==============================
-# SAVE TEAM SPLIT (important for UI later)
-# ==============================
-
-output = {}
-
-for team_id, group in teams:
-    group = group.sort_values("predicted_rating", ascending=False)
-    output[str(team_id)] = group.to_dict(orient="records")
-
+import os
 import json
 
-with open("data/team_rankings.json", "w") as f:
-    json.dump(output, f, indent=2)
 
-print("\nSaved team_rankings.json")
+def build_team_rankings():
+
+    input_path = "data/predicted_ratings.parquet"
+    output_path = "data/team_rankings.json"
+
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Missing input: {input_path}")
+
+    df = pd.read_parquet(input_path)
+
+    print("Loaded predictions:", df.shape)
+
+    if df.empty:
+        raise Exception("Predictions dataset is empty")
+
+    # CLEAN
+    df = df[
+        (df["teamId"] > 0) &
+        (df["playerName"].notna()) &
+        (df["playerName"] != "")
+    ]
+
+    # 🔥 FIX: convert timestamps → string
+    if "game_date" in df.columns:
+        df["game_date"] = df["game_date"].astype(str)
+
+    teams = df.groupby("teamId")
+
+    output = {}
+
+    for team_id, group in teams:
+        group = group.sort_values("predicted_rating", ascending=False)
+        output[str(team_id)] = group.to_dict(orient="records")
+
+    os.makedirs("data", exist_ok=True)
+
+    with open(output_path, "w") as f:
+        json.dump(output, f, indent=2)
+
+    print(f"Saved → {output_path}")
+
+    return output_path
+
+
+if __name__ == "__main__":
+    build_team_rankings()

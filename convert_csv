@@ -1,0 +1,37 @@
+import pandas as pd
+import os
+
+# ==============================
+# FILE MAP (EDIT IF NEEDED)
+# ==============================
+
+FILES = {
+    "data/play_by_play.parquet": "data/play_by_play.csv",
+    "data/player_game_ratings.parquet": "data/player_game_ratings.csv",
+    "data/player_game_ratings_with_dates.parquet": "data/player_game_ratings_with_dates.csv",
+    "data/player_features.parquet": "data/player_features.csv",
+    "data/predicted_ratings.parquet": "data/predicted_ratings.csv",
+    "data/frontend_home.parquet": "data/frontend_home.csv",
+    "data/frontend_all.parquet": "data/frontend_all.csv",
+    "data/next_day_games.parquet": "data/next_day_games.csv",
+}
+
+# ==============================
+# CONVERSION LOOP
+# ==============================
+
+for parquet_path, csv_path in FILES.items():
+
+    if not os.path.exists(parquet_path):
+        print(f"❌ Skipping (not found): {parquet_path}")
+        continue
+
+    print(f"\nConverting: {parquet_path}")
+
+    df = pd.read_parquet(parquet_path)
+
+    df.to_csv(csv_path, index=False)
+
+    print(f"✅ Saved: {csv_path} | Rows: {len(df)}")
+
+print("\n🎉 Conversion complete.")
