@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg: #000000;
+  --sidebar-bg: #0a0a0a;
+  --card-bg: #111111;
+  --card-bg-hover: #161616;
+  --border: #1e1e1e;
+  --border-hover: #2e2e2e;
+  --accent: #FF6B00;
+  --accent-dim: rgba(255, 107, 0, 0.15);
+  --accent-glow: rgba(255, 107, 0, 0.3);
+  --text-primary: #ffffff;
+  --text-secondary: #888888;
+  --text-dim: #444444;
+  --status-active: #ffffff;
+  --status-probable: #f59e0b;
+  --status-questionable: #f97316;
+  --status-out: #ef4444;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  height: 100vh;
+}
+
+#root {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}

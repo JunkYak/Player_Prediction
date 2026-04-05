@@ -1,12 +1,8 @@
-let homeData = [];
-let allData = [];
-let teamsMap = new Map(); // teamId -> { name, color }
-
 const NBA_TEAMS = {
     "1610612737": { name: "Atlanta Hawks", color: "#e03a3e" },
     "1610612738": { name: "Boston Celtics", color: "#007A33" },
     "1610612751": { name: "Brooklyn Nets", color: "#ffffff" },
-    "1610612766": { name: "Charlotte Hornets", color: "#00788c" },
+    "1610612766": { name: "Charlotte Hornets", color: "#1d1160" },
     "1610612741": { name: "Chicago Bulls", color: "#ce1141" },
     "1610612739": { name: "Cleveland Cavaliers", color: "#860038" },
     "1610612742": { name: "Dallas Mavericks", color: "#00538c" },
@@ -15,8 +11,8 @@ const NBA_TEAMS = {
     "1610612744": { name: "Golden State Warriors", color: "#1D428A" },
     "1610612745": { name: "Houston Rockets", color: "#CE1141" },
     "1610612754": { name: "Indiana Pacers", color: "#FDBB30" },
-    "1610612746": { name: "LA Clippers", color: "#c8102E" },
-    "1610612747": { name: "Los Angeles Lakers", color: "#552583" },
+    "1610612746": { name: "LA Clippers", color: "#1D428A" },
+    "1610612747": { name: "Los Angeles Lakers", color: "#FDB927" },
     "1610612763": { name: "Memphis Grizzlies", color: "#5D76A9" },
     "1610612748": { name: "Miami Heat", color: "#98002E" },
     "1610612749": { name: "Milwaukee Bucks", color: "#00471B" },
@@ -31,185 +27,170 @@ const NBA_TEAMS = {
     "1610612758": { name: "Sacramento Kings", color: "#5a2d81" },
     "1610612759": { name: "San Antonio Spurs", color: "#c4ced4" },
     "1610612761": { name: "Toronto Raptors", color: "#ce1141" },
-    "1610612762": { name: "Utah Jazz", color: "#f9a01b" },
+    "1610612762": { name: "Utah Jazz", color: "#002B5C" },
     "1610612764": { name: "Washington Wizards", color: "#002B5C" }
 };
 
+let rawData = null;
+let currentTeamId = null;
+
+// Initialization
 document.addEventListener("DOMContentLoaded", async () => {
-    showLoading();
     try {
-        // Fetch required datasets with cache busting
-        const timestamp = new Date().getTime();
-        const [homeRes, allRes] = await Promise.all([
-            fetch(`../data/frontend_home.json?t=${timestamp}`),
-            fetch(`../data/frontend_all.json?t=${timestamp}`)
-        ]);
-
-        if(!homeRes.ok || !allRes.ok) throw new Error("Could not load backend JSON");
-
-        homeData = await homeRes.json();
-        allData = await allRes.json();
-
-        // Extract Teams from allData dynamically to prevent missing teams
-        const uniqueTeams = [...new Set(allData.map(p => String(p.teamId)))];
+        const response = await fetch("../data/team_rankings.json");
+        if (!response.ok) throw new Error("Failed to fetch data.");
         
-        uniqueTeams.forEach(id => {
-            const player = allData.find(p => String(p.teamId) === id);
-            teamsMap.set(id, {
-                name: player.teamName || NBA_TEAMS[id]?.name || `Team ${id}`,
-                color: NBA_TEAMS[id]?.color || '#3b82f6'
-            });
-        });
+        rawData = await response.json();
+        const teamIds = Object.keys(rawData);
+        
+        if (teamIds.length === 0) {
+            document.getElementById("roster-grid").innerHTML = `<div class="empty-state"><p>No prediction data found.</p></div>`;
+            return;
+        }
 
-        buildSidebar(Array.from(teamsMap.keys()));
-
-        // Start on Home view
-        goHome();
-    } catch(err) {
+        buildSidebar(teamIds);
+        
+        // Select first team
+        selectTeam(teamIds[0]);
+    } catch (err) {
         console.error(err);
-        document.getElementById("view-title").textContent = "Data Error";
-        document.getElementById("view-subtitle").textContent = "Check if generate_json.py was run recently.";
-    } finally {
-        hideLoading();
+        document.getElementById("roster-grid").innerHTML = `
+            <div class="empty-state">
+                <i class="fa-solid fa-triangle-exclamation fa-3x" style="color:var(--danger)"></i>
+                <p>Could not load ranking data. Make sure to run the Python backend pipeline first and serve using a valid HTTP server.</p>
+            </div>
+        `;
     }
 });
 
-function showLoading() {
-    document.getElementById("loading-state").classList.add("active");
-    document.getElementById("roster-section").style.opacity = '0';
-}
-function hideLoading() {
-    document.getElementById("loading-state").classList.remove("active");
-    document.getElementById("roster-section").style.opacity = '1';
-}
-
-function getRatingClass(rating) {
-    if (!rating) return 'rate-low';
-    if (rating >= 3.0) return 'rate-high';
-    if (rating >= 1.5) return 'rate-med';
-    return 'rate-low';
-}
-
-function createPlayerCard(p, isTop3 = false) {
-    const defaultImg = "https://cdn.nba.com/headshots/nba/latest/260x190/logoman.png";
-    const imgUrl = p.headshot ? p.headshot : defaultImg;
-    const teamInfo = teamsMap.get(String(p.teamId)) || { name: p.teamName || 'N/A' };
-    
-    // Formatting numbers
-    const predStr = p.predicted_rating ? parseFloat(p.predicted_rating).toFixed(2) : '-';
-    let lgStr = p.last_game ? parseFloat(p.last_game).toFixed(2) : '-';
-    let avgStr = p.last3_avg ? parseFloat(p.last3_avg).toFixed(2) : '-';
-
-    // SVG Fallback behavior
-    const onErr = `this.style.display='none'; this.nextElementSibling.style.display='flex';`;
-
-    const topClass = isTop3 ? 'top-3' : '';
-    
-    return `
-        <div class="player-card ${topClass}">
-            <div class="pc-header">
-                <div class="headshot-container">
-                    <img src="${imgUrl}" class="headshot" onerror="${onErr}">
-                    <div class="headshot-fallback" style="display:none;">
-                        <svg><use href="#icon-user"></use></svg>
-                    </div>
-                </div>
-                <div class="pc-info">
-                    <h3>${p.playerName || 'Unknown'}</h3>
-                    <p>${teamInfo.name}</p>
-                    ${p.opponentName ? `<p class="opponent">vs ${p.opponentName}</p>` : ''}
-                </div>
-            </div>
-            
-            <div class="pc-ratings">
-                <div class="rating-block">
-                    <span class="lbl">Predicted</span>
-                    <span class="rating-val ${getRatingClass(p.predicted_rating)}">${predStr}</span>
-                </div>
-                <div class="rating-block" style="text-align: right;">
-                    <span class="lbl">Last Game</span>
-                    <span class="rating-sub">${lgStr}</span>
-                    <span class="rating-sm">L3 Avg: ${avgStr}</span>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function renderGrid(players, highlightTop3 = false) {
-    const grid = document.getElementById("roster-grid");
-    grid.innerHTML = "";
-    
-    players.forEach((p, idx) => {
-        grid.innerHTML += createPlayerCard(p, highlightTop3 && idx < 3);
-    });
-}
-
-function resetNav() {
-    document.querySelectorAll(".nav-btn, .team-btn").forEach(el => el.classList.remove("active"));
-}
-
-window.goHome = function() {
-    showLoading();
-    resetNav();
-    document.getElementById("btn-home").classList.add("active");
-    
-    // Reset global theme to default
-    document.documentElement.style.setProperty("--accent-color", "#3b82f6");
-    
-    setTimeout(() => {
-        document.getElementById("view-title").textContent = "Top 10 Prediction";
-        document.getElementById("view-title").style.color = "#f8fafc";
-        document.getElementById("view-subtitle").textContent = "Players predicted to peak tomorrow based on recent form";
-        
-        renderGrid(homeData, true);
-        hideLoading();
-    }, 150);
-}
-
-window.viewTeam = function(teamId) {
-    showLoading();
-    resetNav();
-    document.getElementById(`btn-${teamId}`).classList.add("active");
-    
-    setTimeout(() => {
-        const teamInfo = teamsMap.get(String(teamId));
-        
-        // Dynamic theme!
-        document.documentElement.style.setProperty("--accent-color", teamInfo.color);
-        
-        document.getElementById("view-title").textContent = teamInfo.name;
-        document.getElementById("view-title").style.color = teamInfo.color;
-        document.getElementById("view-subtitle").textContent = "Team Roster sorted by Predicted Form";
-
-        const teamPlayers = allData
-            .filter(p => String(p.teamId) === String(teamId))
-            .sort((a,b) => parseFloat(b.predicted_rating || 0) - parseFloat(a.predicted_rating || 0));
-
-        renderGrid(teamPlayers, false);
-        hideLoading();
-    }, 150);
+function getTeamInfo(teamId) {
+    if (NBA_TEAMS[teamId]) {
+        return NBA_TEAMS[teamId];
+    }
+    return { name: `Team ${teamId}`, color: "#3b82f6" };
 }
 
 function buildSidebar(teamIds) {
     const list = document.getElementById("team-list");
     list.innerHTML = "";
 
-    const sortedTeams = teamIds
-        .map(id => ({ id, ...teamsMap.get(id) }))
-        .sort((a,b) => a.name.localeCompare(b.name));
+    // Sort team names
+    const sortedTeams = teamIds.map(id => ({ id, ...getTeamInfo(id) })).sort((a,b) => a.name.localeCompare(b.name));
 
     sortedTeams.forEach(team => {
         const btn = document.createElement("button");
         btn.className = "team-btn";
         btn.id = `btn-${team.id}`;
         
+        // Use color dot
         btn.innerHTML = `
             <span style="width:10px; height:10px; border-radius:50%; background-color:${team.color}; box-shadow: 0 0 8px ${team.color}"></span>
             ${team.name}
         `;
         
-        btn.onclick = () => viewTeam(team.id);
+        btn.onclick = () => selectTeam(team.id);
         list.appendChild(btn);
+    });
+}
+
+function selectTeam(teamId) {
+    if(currentTeamId) {
+        const oldBtn = document.getElementById(`btn-${currentTeamId}`);
+        if(oldBtn) oldBtn.classList.remove("active");
+    }
+
+    currentTeamId = teamId;
+    const btn = document.getElementById(`btn-${teamId}`);
+    if(btn) btn.classList.add("active");
+
+    const tInfo = getTeamInfo(teamId);
+    
+    // Update Theme Variables dynamically!
+    document.documentElement.style.setProperty("--accent-color", tInfo.color);
+    
+    // Attempt to calculate glow from color (simple opacity hack done in CSS by inheriting var instead, or redefining here)
+    const cardGlow = tInfo.color;
+    
+    // DOM Updates
+    document.getElementById("current-team-name").textContent = tInfo.name;
+    document.getElementById("current-team-name").style.color = tInfo.color;
+    
+    renderTeamData(teamId);
+}
+
+function renderTeamData(teamId) {
+    const players = rawData[teamId] || [];
+    
+    if (players.length > 0) {
+        document.getElementById("latest-game-date").textContent = `Game Date: ${players[0].game_date || "Unknown"}`;
+    }
+
+    // Top Stats logic
+    const topPlayer = players[0];
+    const topImprover = [...players].sort((a,b) => (b.predicted_rating - b.last_game) - (a.predicted_rating - a.last_game))[0];
+    const topAverage = [...players].sort((a,b) => b.last3_avg - a.last3_avg)[0];
+
+    document.getElementById("stats-row").innerHTML = `
+        <div class="stat-card">
+            <span class="label">Top Predicted Player</span>
+            <span class="value">${topPlayer ? topPlayer.predicted_rating.toFixed(2) : '-'}</span>
+            <span class="player-name">${topPlayer ? topPlayer.playerName : '-'}</span>
+        </div>
+        <div class="stat-card">
+            <span class="label">Best Form (Last 3)</span>
+            <span class="value">${topAverage ? topAverage.last3_avg.toFixed(2) : '-'}</span>
+            <span class="player-name">${topAverage ? topAverage.playerName : '-'}</span>
+        </div>
+        <div class="stat-card">
+            <span class="label">Biggest Expected Jump</span>
+            <span class="value" style="color:var(--success)">+${topImprover && topImprover.last_game ? (topImprover.predicted_rating - topImprover.last_game).toFixed(2) : '-'}</span>
+            <span class="player-name">${topImprover ? topImprover.playerName : '-'}</span>
+        </div>
+    `;
+
+    // Render roster grid
+    const grid = document.getElementById("roster-grid");
+    grid.innerHTML = "";
+
+    players.forEach(p => {
+        let diff = 0;
+        let trendHtml = `<span class="trend flat"><i class="fa-solid fa-minus"></i> 0.0</span>`;
+        if (p.last_game !== null && p.last_game !== undefined) {
+            diff = p.predicted_rating - p.last_game;
+            if (diff > 0.1) {
+                trendHtml = `<span class="trend up"><i class="fa-solid fa-arrow-trend-up"></i> +${diff.toFixed(2)}</span>`;
+            } else if (diff < -0.1) {
+                trendHtml = `<span class="trend down"><i class="fa-solid fa-arrow-trend-down"></i> ${diff.toFixed(2)}</span>`;
+            }
+        }
+
+        const card = document.createElement("div");
+        card.className = "player-card";
+        card.innerHTML = `
+            <div class="player-info">
+                <div class="player-name-container">
+                    <h3>${p.playerName}</h3>
+                    <p>Opponent ID: ${p.gameId}</p>
+                </div>
+                <div class="predicted-rating">${p.predicted_rating.toFixed(2)}</div>
+            </div>
+            
+            <div class="form-metrics">
+                <div class="metric">
+                    <span class="label">Last Game</span>
+                    <span class="val">${p.last_game ? p.last_game.toFixed(2) : 'N/A'}</span>
+                </div>
+                <div class="metric">
+                    <span class="label">Last 3 Avg</span>
+                    <span class="val">${p.last3_avg ? p.last3_avg.toFixed(2) : 'N/A'}</span>
+                </div>
+                <div class="metric" style="align-items: flex-end;">
+                    <span class="label">Trend</span>
+                    ${trendHtml}
+                </div>
+            </div>
+        `;
+        
+        grid.appendChild(card);
     });
 }

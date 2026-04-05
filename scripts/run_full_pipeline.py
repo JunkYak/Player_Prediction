@@ -66,7 +66,7 @@ def main():
         print("\n✅ PIPELINE EXECUTION COMPLETE! READY FOR DASHBOARD.")
 
     except Exception as e:
-        print(f"\n❌ PIPELINE TERMINATED DUE TO ERROR: {e}")
+            print(f"\n❌ PIPELINE TERMINATED DUE TO ERROR: {e}")
 
-if __name__ == "__main__":
-    main()
+    if __name__ == "__main__":
+        main()

@@ -4,7 +4,8 @@ import os
 
 def build_frontend_dataset():
 
-    pred_path = "data/predicted_ratings.parquet"
+    # ✅ UPDATED PATH
+    pred_path = "data/predicted_ratings_with_status.parquet"
     games_path = "data/next_day_games.parquet"
 
     if not os.path.exists(pred_path):
@@ -21,6 +22,24 @@ def build_frontend_dataset():
 
     if pred.empty or games.empty:
         raise Exception("Input datasets cannot be empty")
+
+    # ==============================
+    # ✅ STATUS SORTING (NEW)
+    # ==============================
+
+    status_priority = {
+        "Active": 0,
+        "Probable": 1,
+        "Questionable": 2,
+        "Out": 3
+    }
+
+    pred["status_rank"] = pred["status"].map(status_priority)
+
+    pred = pred.sort_values(
+        ["status_rank", "predicted_rating"],
+        ascending=[True, False]
+    )
 
     # ==============================
     # TEAMS PLAYING
@@ -66,11 +85,9 @@ def build_frontend_dataset():
     pred["opponentId"] = pred["teamId"].map(opponent_map)
     pred["opponentName"] = pred["opponentId"].map(team_map)
 
-    # Fix missing mappings
     pred["teamName"] = pred["teamName"].fillna("Unknown")
     pred["opponentName"] = pred["opponentName"].fillna("Unknown")
 
-    # Player headshots
     pred["headshot"] = pred["personId"].apply(
         lambda x: f"https://cdn.nba.com/headshots/nba/latest/1040x760/{x}.png"
     )
@@ -80,24 +97,26 @@ def build_frontend_dataset():
     # ==============================
 
     full_df = pred.sort_values(
-        ["teamId", "predicted_rating"],
-        ascending=[True, False]
+        ["teamId", "status_rank", "predicted_rating"],
+        ascending=[True, True, False]
     )
 
     # ==============================
-    # HOMEPAGE DATASET (SMARTER)
+    # HOMEPAGE DATASET
     # ==============================
 
     home_df = pred[pred["teamId"].isin(teams)].copy()
 
-    # Take top 3 per team (balanced)
     home_df = (
-        home_df.sort_values("predicted_rating", ascending=False)
+        home_df.sort_values(["status_rank", "predicted_rating"], ascending=[True, False])
         .groupby("teamId")
         .head(3)
     )
 
-    home_df = home_df.sort_values("predicted_rating", ascending=False)
+    home_df = home_df.sort_values(
+        ["status_rank", "predicted_rating"],
+        ascending=[True, False]
+    )
 
     # ==============================
     # SAVE
@@ -113,7 +132,7 @@ def build_frontend_dataset():
     print("→ data/frontend_home.parquet")
 
     print("\nTop Players (Next Day):")
-    print(home_df[["playerName", "teamName", "opponentName", "predicted_rating"]].head(15))
+    print(home_df[["playerName", "teamName", "opponentName", "predicted_rating", "status"]].head(15))
 
     return "data/frontend_home.parquet"
 

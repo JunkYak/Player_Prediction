@@ -1,30 +1,82 @@
 import pandas as pd
-import json
 import os
+import json
 
-# Define paths relative to the frontend directory
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
-home_parquet_path = os.path.join(DATA_DIR, "frontend_home.parquet")
-all_parquet_path = os.path.join(DATA_DIR, "frontend_all.parquet")
+# ==============================
+# PATH CONFIG
+# ==============================
 
-home_json_path = os.path.join(DATA_DIR, "frontend_home.json")
-all_json_path = os.path.join(DATA_DIR, "frontend_all.json")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-print(f"Reading {home_parquet_path}...")
-try:
-    df_home = pd.read_parquet(home_parquet_path)
-    df_home.to_json(home_json_path, orient="records")
-    print(f"Successfully generated {home_json_path}")
-except Exception as e:
-    print(f"Error processing frontend_home.parquet: {e}")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+OUTPUT_DIR = os.path.join(BASE_DIR, "lineup-builder", "public")
 
-print(f"Reading {all_parquet_path}...")
-try:
-    df_all = pd.read_parquet(all_parquet_path)
-    df_all.to_json(all_json_path, orient="records")
-    print(f"Successfully generated {all_json_path}")
-except Exception as e:
-    print(f"Error processing frontend_all.parquet: {e}")
+HOME_FILE = os.path.join(DATA_DIR, "frontend_home.parquet")
+ALL_FILE = os.path.join(DATA_DIR, "frontend_all.parquet")
 
-print("Done generating JSON files for the frontend.")
+OUTPUT_HOME = os.path.join(OUTPUT_DIR, "frontend_home.json")
+OUTPUT_ALL = os.path.join(OUTPUT_DIR, "frontend_all.json")
+
+
+# ==============================
+# ENSURE OUTPUT DIR EXISTS
+# ==============================
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+
+# ==============================
+# CONVERT FUNCTION
+# ==============================
+
+def convert_parquet_to_json(input_path, output_path):
+
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Missing file: {input_path}")
+
+    df = pd.read_parquet(input_path)
+
+    if df.empty:
+        raise Exception(f"{input_path} is empty")
+
+    # ==============================
+    # FIX: Convert datetime columns
+    # ==============================
+
+    for col in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = df[col].astype(str)
+
+    # Also ensure no NaNs break JSON
+    df = df.fillna("")
+
+    records = df.to_dict(orient="records")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(records, f, indent=2)
+
+    print(f"Saved → {output_path}")
+    print(f"Records: {len(records)}")
+
+
+# ==============================
+# MAIN
+# ==============================
+
+def generate_json():
+
+    print("\n🔹 Generating frontend JSON files...")
+
+    convert_parquet_to_json(HOME_FILE, OUTPUT_HOME)
+    convert_parquet_to_json(ALL_FILE, OUTPUT_ALL)
+
+    print("\n✅ Frontend JSON ready")
+
+
+# ==============================
+# RUN
+# ==============================
+
+if __name__ == "__main__":
+    generate_json()
