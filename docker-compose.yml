@@ -1,0 +1,58 @@
+# ==============================================================================
+# NBA Player Performance Prediction System — Production Docker Compose
+# ==============================================================================
+# Deploys:
+#   1. web: FastAPI serving layer + static React SPA bundle
+#   2. scheduler: Daily background pipeline orchestrator (fires daily at 05:00 ET)
+#   3. persistent volume: propredict_data shared between both services
+# ==============================================================================
+
+version: "3.8"
+
+services:
+  # ─── FastAPI Serving Layer ───────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: propredict-web
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PROPREDICT_DATA_DIR=/app/data
+      - PROPREDICT_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8000,http://127.0.0.1:8000
+      - PROPREDICT_ENV=production
+      - PROPREDICT_STATIC_DIR=/app/static
+      - PROPREDICT_RELOAD=false
+    volumes:
+      - propredict_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ─── Daily Batch Pipeline Scheduler ──────────────────────────────────────────
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: propredict-scheduler
+    restart: unless-stopped
+    command: ["python", "orchestrator.py", "--daemon", "--time", "05:00"]
+    environment:
+      - PROPREDICT_DATA_DIR=/app/data
+      - PROPREDICT_ENV=production
+      - PROPREDICT_SCHEDULE_TIME=05:00
+    volumes:
+      - propredict_data:/app/data
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  propredict_data:
+    name: propredict_canonical_data
+    driver: local

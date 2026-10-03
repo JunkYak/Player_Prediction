@@ -8,6 +8,8 @@ import TeamsSection from './components/TeamsSection';
 import SlotPickerModal from './components/SlotPickerModal';
 import PlayerDetailModal from './components/PlayerDetailModal';
 
+import { fetchPlayers, fetchTeams, API_BASE_URL } from './api';
+
 const NAV = [
   { id: 'lineup',  label: 'Draft Lineup',  icon: Layers  },
   { id: 'players', label: 'Top Players',   icon: Users   },
@@ -39,16 +41,16 @@ export default function App() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [homeRes, allRes] = await Promise.all([
-          fetch('/frontend_home.json'),
-          fetch('/frontend_all.json'),
+        setLoading(true);
+        setError(null);
+        const [playersResp, teamsResp] = await Promise.all([
+          fetchPlayers(),
+          fetchTeams(),
         ]);
-        if (!homeRes.ok || !allRes.ok) throw new Error('Failed to fetch data files.');
-        const [home, all] = await Promise.all([homeRes.json(), allRes.json()]);
-        setHomeData(home);
-        setAllData(all);
+        setHomeData(playersResp.players || []);
+        setAllData(teamsResp.players || []);
       } catch (err) {
-        setError(err.message);
+        setError(err.message || 'Unable to connect to the prediction API.');
       } finally {
         setLoading(false);
       }
@@ -62,20 +64,57 @@ export default function App() {
     setActiveSection('players');
   }
 
+  // ─── Remove player from specific slot ──────────────────────────────────────
+  function handleRemoveSlot(index) {
+    setSlots(prev => {
+      const next = [...prev];
+      next[index] = null;
+      return next;
+    });
+  }
+
+  // ─── Reset entire lineup ───────────────────────────────────────────────────
+  function handleClearAll() {
+    setSlots([null, null, null, null, null]);
+  }
+
   // ─── "+" button on a player card ───────────────────────────────────────────
   function handleAdd(player) {
-    // Check duplicate
-    if (slots.some(s => s?.personId === player.personId)) return;
+    // Prevent adding player if already in any slot
+    if (slots.some(s => s?.personId === player.personId)) {
+      return;
+    }
+
+    // If navigation was triggered from a specific slot click, assign directly or open picker
+    if (pendingSlotIndex !== null && pendingSlotIndex >= 0 && pendingSlotIndex < 5) {
+      const newSlots = [...slots];
+      newSlots[pendingSlotIndex] = player;
+      setSlots(newSlots);
+      setPendingSlotIndex(null);
+      setActiveSection('lineup');
+      return;
+    }
+
     setSlotModal(player);
   }
 
   // ─── Pick which slot ────────────────────────────────────────────────────────
   function handleSelectSlot(slotIndex) {
     if (slotModal) {
-      const newSlots = [...slots];
-      newSlots[slotIndex] = slotModal;
-      setSlots(newSlots);
+      setSlots(prev => {
+        const newSlots = [...prev];
+        // If player already occupies another slot, clear it to guarantee no duplicates
+        for (let i = 0; i < 5; i++) {
+          if (newSlots[i]?.personId === slotModal.personId) {
+            newSlots[i] = null;
+          }
+        }
+        newSlots[slotIndex] = slotModal;
+        return newSlots;
+      });
       setSlotModal(null);
+      setPendingSlotIndex(null);
+      setActiveSection('lineup');
     }
   }
 
@@ -92,9 +131,10 @@ export default function App() {
 
   if (error) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'var(--font-mono)', fontSize: 12, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'center', padding: 40 }}>
-        ⚠ DATA ERROR<br /><br />{error}<br /><br />
-        <span style={{ color: '#555' }}>Ensure the Python pipeline has run and the app is served via a local server.</span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'var(--font-mono)', fontSize: 12, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'center', padding: 40 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>⚠ API CONNECTION ERROR</div>
+        <div style={{ color: '#aaa', maxWidth: 480, marginBottom: 16, textTransform: 'none', lineHeight: 1.5 }}>{error}</div>
+        <span style={{ color: '#666', fontSize: 11, textTransform: 'none' }}>Ensure FastAPI backend is running at {API_BASE_URL} and serving artifacts are loaded.</span>
       </div>
     );
   }
@@ -125,8 +165,8 @@ export default function App() {
         <div className="sidebar-status">
           <span className="sidebar-status-dot" />
           <span className="sidebar-status-text">System Online</span>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#333', marginTop: 6, letterSpacing: '0.06em' }}>
-            {homeData.length} players loaded
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#444', marginTop: 6, letterSpacing: '0.06em' }}>
+            {homeData.length > 0 ? `${homeData.length} players active` : 'No games scheduled'}
           </div>
         </div>
       </aside>
@@ -150,6 +190,9 @@ export default function App() {
             <LineupSection
               slots={slots}
               onSlotClick={handleSlotClick}
+              onRemoveSlot={handleRemoveSlot}
+              onClearAll={handleClearAll}
+              gamesAvailable={homeData.length > 0}
             />
           )}
 

@@ -2,21 +2,22 @@ import { useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import PlayerCard from './PlayerCard';
 
-// SECTION 3 — TEAMS (from frontend_all.json, includes OUT players)
+// SECTION 3 — TEAMS (from GET /api/v1/teams, includes OUT players)
 export default function TeamsSection({ allPlayers, onAdd, onDetail }) {
   const [selectedTeam, setSelectedTeam] = useState(null);
 
   // Build team list from all players
   const teamMap = {};
-  allPlayers.forEach(p => {
+  const validPlayers = (Array.isArray(allPlayers) ? allPlayers : []).filter(p => p && p.teamId);
+  validPlayers.forEach(p => {
     const key = p.teamId;
     if (!teamMap[key]) {
-      teamMap[key] = { teamId: key, teamName: p.teamName, players: [] };
+      teamMap[key] = { teamId: key, teamName: p.teamName || 'Unknown Team', players: [] };
     }
     teamMap[key].players.push(p);
   });
 
-  const teams = Object.values(teamMap).sort((a, b) => a.teamName.localeCompare(b.teamName));
+  const teams = Object.values(teamMap).sort((a, b) => (a.teamName || '').localeCompare(b.teamName || ''));
 
   if (selectedTeam) {
     // Sort: status_rank asc → predicted_rating desc; OUT players always at bottom
@@ -67,8 +68,8 @@ export default function TeamsSection({ allPlayers, onAdd, onDetail }) {
 
       <div className="teams-grid">
         {teams.map(team => {
-          const abbr = team.teamName.slice(0, 3).toUpperCase();
-          const activeCount = team.players.filter(p => p.status !== 'Out').length;
+          const abbr = (team.teamName || 'NBA').slice(0, 3).toUpperCase();
+          const activeCount = team.players.filter(p => p && p.status !== 'Out').length;
           return (
             <div
               key={team.teamId}

@@ -1,6 +1,10 @@
 import pandas as pd
 import os
+import sys
 import json
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 # ==============================
@@ -30,34 +34,33 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # CONVERT FUNCTION
 # ==============================
 
-def convert_parquet_to_json(input_path, output_path):
-
+def convert_parquet_to_json(input_path: str, output_path: str):
+    """
+    Safely converts a parquet dataset to a JSON array.
+    If the parquet is empty (e.g. 0 games scheduled tomorrow), writes [] to output.
+    """
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Missing file: {input_path}")
 
     df = pd.read_parquet(input_path)
 
     if df.empty:
-        raise Exception(f"{input_path} is empty")
+        records = []
+    else:
+        # Convert datetime columns to ISO string
+        for col in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                df[col] = df[col].astype(str)
 
-    # ==============================
-    # FIX: Convert datetime columns
-    # ==============================
+        # Ensure no NaNs break JSON serialization
+        df = df.fillna("")
+        records = df.to_dict(orient="records")
 
-    for col in df.columns:
-        if pd.api.types.is_datetime64_any_dtype(df[col]):
-            df[col] = df[col].astype(str)
-
-    # Also ensure no NaNs break JSON
-    df = df.fillna("")
-
-    records = df.to_dict(orient="records")
-
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(records, f, indent=2)
 
-    print(f"Saved → {output_path}")
-    print(f"Records: {len(records)}")
+    print(f"Saved → {output_path} ({len(records)} records)")
 
 
 # ==============================
@@ -65,13 +68,10 @@ def convert_parquet_to_json(input_path, output_path):
 # ==============================
 
 def generate_json():
-
     print("\n🔹 Generating frontend JSON files...")
-
     convert_parquet_to_json(HOME_FILE, OUTPUT_HOME)
     convert_parquet_to_json(ALL_FILE, OUTPUT_ALL)
-
-    print("\n✅ Frontend JSON ready")
+    print("✅ Frontend JSON ready")
 
 
 # ==============================

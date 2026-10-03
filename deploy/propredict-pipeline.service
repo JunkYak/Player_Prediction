@@ -1,0 +1,12 @@
+[Unit]
+Description=NBA Player Performance Prediction Daily Update Pipeline
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/propredict
+EnvironmentFile=/var/www/propredict/.env
+ExecStart=/var/www/propredict/venv/bin/python orchestrator.py --once
+TimeoutStartSec=1800

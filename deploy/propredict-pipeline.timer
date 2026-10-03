@@ -1,0 +1,10 @@
+[Unit]
+Description=Trigger NBA Prediction Daily Update Pipeline at 05:00 ET
+
+[Timer]
+# Runs daily at 05:00 America/New_York (10:00 UTC)
+OnCalendar=*-*-* 10:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

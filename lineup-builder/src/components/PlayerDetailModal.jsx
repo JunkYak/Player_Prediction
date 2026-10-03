@@ -17,13 +17,13 @@ export default function PlayerDetailModal({ player, onClose }) {
         <div className="detail-player-header">
           <img
             className="detail-headshot"
-            src={player.headshot}
-            alt={player.playerName}
+            src={player.headshot || ''}
+            alt={player.playerName || 'Unknown Player'}
             onError={e => { e.target.style.display = 'none'; }}
           />
           <div className="detail-player-info">
-            <div className="detail-player-name">{player.playerName}</div>
-            <div className="detail-matchup">{player.teamName} vs {player.opponentName || '—'}</div>
+            <div className="detail-player-name">{player.playerName || 'Unknown Player'}</div>
+            <div className="detail-matchup">{(player.teamName || '—')} vs {(player.opponentName || '—')}</div>
             <StatusBadge status={player.status} />
           </div>
         </div>
@@ -32,24 +32,34 @@ export default function PlayerDetailModal({ player, onClose }) {
         <div className="detail-stats-grid">
           <div className="detail-stat-card">
             <div className="detail-stat-label">Predicted Rating</div>
-            <div className="detail-stat-value">{player.predicted_rating?.toFixed(2) ?? '—'}</div>
+            <div className="detail-stat-value">
+              {typeof player.predicted_rating === 'number' && !isNaN(player.predicted_rating)
+                ? player.predicted_rating.toFixed(2)
+                : '—'}
+            </div>
           </div>
           <div className="detail-stat-card">
             <div className="detail-stat-label">Last Game</div>
             <div className="detail-stat-value" style={{ fontSize: 20, color: 'var(--text-primary)' }}>
-              {player.last_game?.toFixed(2) ?? '—'}
+              {typeof player.last_game === 'number' && !isNaN(player.last_game)
+                ? player.last_game.toFixed(2)
+                : '—'}
             </div>
           </div>
           <div className="detail-stat-card">
             <div className="detail-stat-label">Last 3 Avg</div>
             <div className="detail-stat-value" style={{ fontSize: 20, color: 'var(--text-secondary)' }}>
-              {player.last3_avg?.toFixed(2) ?? '—'}
+              {typeof player.last3_avg === 'number' && !isNaN(player.last3_avg)
+                ? player.last3_avg.toFixed(2)
+                : '—'}
             </div>
           </div>
           <div className="detail-stat-card">
             <div className="detail-stat-label">Last 7 Avg</div>
             <div className="detail-stat-value" style={{ fontSize: 20, color: 'var(--text-secondary)' }}>
-              {player.last7_avg?.toFixed(2) ?? '—'}
+              {typeof player.last7_avg === 'number' && !isNaN(player.last7_avg)
+                ? player.last7_avg.toFixed(2)
+                : '—'}
             </div>
           </div>
         </div>
@@ -58,7 +68,7 @@ export default function PlayerDetailModal({ player, onClose }) {
         <div style={{ marginTop: 2 }} className="detail-stat-card">
           <div className="detail-stat-label">Opponent</div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--text-primary)', marginTop: 2, fontWeight: 600 }}>
-            {player.opponentName || 'Unknown'}
+            {player.opponentName || '—'}
           </div>
         </div>
       </div>

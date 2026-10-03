@@ -1,17 +1,30 @@
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
 
-# Virtual env
+# Virtual env & environment configuration
 venv/
-.env/
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Scratch
+scratch/
 
 # Data files
 data/*.parquet
 data/*.csv
+data/*.jsonl
+data/*.lock
+data/pipeline_status.json
 
 # Models
 models/*.pkl
+!models/rating_model.pkl
 
 # OS junk
 .DS_Store

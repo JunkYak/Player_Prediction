@@ -3,8 +3,15 @@ import StatusBadge from './StatusBadge';
 
 // Player card used in both Top Players and Team view
 export default function PlayerCard({ player, onAdd, onDetail, showNotPlayed = false }) {
-  const rating = player.predicted_rating;
+  if (!player) return null;
+
+  const rawRating = player.predicted_rating;
+  const hasValidRating = typeof rawRating === 'number' && !isNaN(rawRating);
+  const formattedRating = hasValidRating ? rawRating.toFixed(2) : 'N/A';
   const isOut = player.status === 'Out';
+  const name = player.playerName || 'Unknown Player';
+  const team = player.teamName || '—';
+  const opponent = player.opponentName || '—';
 
   return (
     <div className={`player-card ${isOut ? 'out-player' : ''}`}>
@@ -12,11 +19,11 @@ export default function PlayerCard({ player, onAdd, onDetail, showNotPlayed = fa
         {/* Headshot */}
         <img
           className="player-headshot"
-          src={player.headshot}
-          alt={player.playerName}
+          src={player.headshot || ''}
+          alt={name}
           onError={e => {
             e.target.style.display = 'none';
-            e.target.nextSibling.style.display = 'flex';
+            if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
           }}
         />
         <div className="player-headshot-fallback" style={{ display: 'none' }}>
@@ -26,10 +33,10 @@ export default function PlayerCard({ player, onAdd, onDetail, showNotPlayed = fa
         {/* Info */}
         <div className="player-info">
           <button className="player-name" onClick={() => onDetail && onDetail(player)}>
-            {player.playerName}
+            {name}
           </button>
           <div className="player-matchup">
-            {player.teamName} vs {player.opponentName || '—'}
+            {team} vs {opponent}
           </div>
           <StatusBadge status={player.status} />
         </div>
@@ -39,7 +46,7 @@ export default function PlayerCard({ player, onAdd, onDetail, showNotPlayed = fa
         <div className="player-rating-block">
           <div className="player-rating-label">Predicted</div>
           <div className="player-rating-value">
-            {showNotPlayed && !rating ? 'N/A' : rating?.toFixed(2) ?? 'N/A'}
+            {showNotPlayed && !hasValidRating ? 'N/A' : formattedRating}
           </div>
         </div>
 

@@ -1,0 +1,17 @@
+.git
+.gitignore
+.pytest_cache
+__pycache__
+*.pyc
+
+lineup-builder/node_modules
+lineup-builder/dist
+
+data/*.parquet
+data/*.csv
+
+scratch
+*.log
+
+.env
+.env.*

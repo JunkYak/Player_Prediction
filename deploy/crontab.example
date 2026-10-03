@@ -1,0 +1,14 @@
+# ==============================================================================
+# NBA Player Performance Prediction — Production Crontab Example
+# ==============================================================================
+# Schedule: Daily at 05:00 AM America/New_York (10:00 UTC)
+#
+# Assumptions:
+#   - All overnight NBA games have completed and stats are finalized by 03:00-04:00 AM ET.
+#   - Early morning draft users receive fresh predictions before 07:00 AM ET.
+#
+# Replace /var/www/propredict with your absolute project root.
+# ==============================================================================
+
+# m h  dom mon dow   command
+0 10 * * * cd /var/www/propredict && /var/www/propredict/venv/bin/python orchestrator.py --once >> /var/log/propredict_cron.log 2>&1

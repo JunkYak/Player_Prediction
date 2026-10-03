@@ -2,6 +2,10 @@ import pandas as pd
 import os
 import sys
 
+# Phase 2B: Fix Windows console encoding for non-ASCII player names (e.g. Jokić, Valančiūnas)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # Ensure parent path for rating_engine import
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -123,7 +127,11 @@ def compute_player_ratings():
     print("Rows:", len(player_ratings))
 
     print("\nSample:")
-    print(player_ratings.head(20))
+    try:
+        print(player_ratings.head(20).to_string())
+    except UnicodeEncodeError:
+        # Fallback for consoles that still can't handle some characters
+        print(player_ratings.head(20).to_string().encode("ascii", errors="replace").decode("ascii"))
 
     return output_path
 
