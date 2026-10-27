@@ -1,8 +1,16 @@
-import { User, X, Plus } from 'lucide-react';
-import StatusBadge from './StatusBadge';
+import { User, X, Plus, Info } from 'lucide-react';
+import NbaLogo from './NbaLogo';
 
 // A single slot in the Draft lineup bar
-export default function Slot({ player, index, multiplier = 1.0, projectedValue = 0, onClick, onRemove }) {
+export default function Slot({
+  player,
+  index,
+  multiplier = 1.0,
+  projectedValue = 0,
+  onClick,
+  onRemove,
+  onDetail,
+}) {
   const slotNum = index + 1;
   const multiplierText = `${multiplier.toFixed(1)}x`;
 
@@ -10,12 +18,31 @@ export default function Slot({ player, index, multiplier = 1.0, projectedValue =
     <div
       className={`lineup-slot ${player ? 'is-filled' : 'is-empty'}`}
       onClick={onClick}
-      title={player ? `${player.playerName} (Slot ${slotNum} • ${multiplierText})` : `Slot ${slotNum} • ${multiplierText} — Click to assign`}
+      title={
+        player
+          ? `${player.playerName} (Slot ${slotNum} • ${multiplierText}) — Click to replace`
+          : `Slot ${slotNum} • ${multiplierText} — Click to assign`
+      }
     >
-      {/* Slot Header with Multiplier Badge */}
+      {/* Slot Header with Multiplier Badge and Info Button */}
       <div className="slot-header-tag">
         <span className="slot-number">SLOT {slotNum}</span>
         <span className="slot-multiplier-badge">{multiplierText}</span>
+
+        {player && onDetail && (
+          <button
+            type="button"
+            className="slot-info-btn"
+            onClick={e => {
+              e.stopPropagation();
+              onDetail(player);
+            }}
+            title={`View ${player.playerName} Intel`}
+            aria-label={`View ${player.playerName} Intel`}
+          >
+            <Info size={11} />
+          </button>
+        )}
       </div>
 
       <div className={`slot-circle ${player ? 'filled' : ''}`}>
@@ -29,7 +56,16 @@ export default function Slot({ player, index, multiplier = 1.0, projectedValue =
                 if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
               }}
             />
-            <div style={{ display: 'none', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: '#1a1a1a' }}>
+            <div
+              style={{
+                display: 'none',
+                width: '100%',
+                height: '100%',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#1a1a1a',
+              }}
+            >
               <User size={32} style={{ color: '#444' }} />
             </div>
             {onRemove && (
@@ -57,8 +93,29 @@ export default function Slot({ player, index, multiplier = 1.0, projectedValue =
       <div className="slot-label">
         {player ? (
           <>
-            <div className="slot-name">{player.playerName || 'Unknown Player'}</div>
-            <div className="slot-team-sub">{player.teamName || 'NBA'}</div>
+            <button
+              type="button"
+              className="slot-name slot-name-interactive"
+              onClick={e => {
+                if (onDetail) {
+                  e.stopPropagation();
+                  onDetail(player);
+                }
+              }}
+              title="Click to view player dossier"
+            >
+              {player.playerName || 'Unknown Player'}
+            </button>
+
+            <div className="slot-team-sub">
+              <NbaLogo
+                teamId={player.teamId}
+                size={11}
+                style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 4 }}
+              />
+              <span>{player.teamName || 'NBA'}</span>
+            </div>
+
             <div className="slot-score-breakdown">
               <div className="slot-base-rating" title="Base Predicted Rating">
                 <span className="label">Base</span>
@@ -86,12 +143,6 @@ export default function Slot({ player, index, multiplier = 1.0, projectedValue =
           </div>
         )}
       </div>
-
-      {player && (
-        <div className="slot-status">
-          <StatusBadge status={player.status} />
-        </div>
-      )}
     </div>
   );
 }

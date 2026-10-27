@@ -21,4 +21,10 @@ pytest>=8.0.0
 # --- API Serving Layer ---
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
+gunicorn>=21.0.0
 httpx>=0.27.0
+
+# --- Cloud Storage (Azure Blob) ---
+azure-storage-blob>=12.19.0
+azure-identity>=1.15.0
+

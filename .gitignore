@@ -26,6 +26,24 @@ data/pipeline_status.json
 models/*.pkl
 !models/rating_model.pkl
 
+# Backups and Archives
+*.zip
+azure-backup-*/
+data_backup_*/
+*-backup-*.json
+data/*-backup-*.json
+
+# Azure Functions Local & Runtime
+local.settings.json
+azure_function/local.settings.json
+azure_function/.python_packages/
+azure_function/data/
+
+# Pipeline Caches & Runtime Metadata
+data/game_dates_cache.json
+data/ingestion_metadata.json
+data/roster_metadata.json
+
 # OS junk
 .DS_Store
 Thumbs.db

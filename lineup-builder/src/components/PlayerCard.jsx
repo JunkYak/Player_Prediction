@@ -1,7 +1,8 @@
 import { User, Plus } from 'lucide-react';
 import StatusBadge from './StatusBadge';
+import NbaLogo from './NbaLogo';
 
-// Player card used in both Top Players and Team view
+// Player card used across Draft Lineup, Top Players, and Teams views
 export default function PlayerCard({ player, onAdd, onDetail, showNotPlayed = false }) {
   if (!player) return null;
 
@@ -36,7 +37,18 @@ export default function PlayerCard({ player, onAdd, onDetail, showNotPlayed = fa
             {name}
           </button>
           <div className="player-matchup">
-            {team} vs {opponent}
+            <NbaLogo
+              teamId={player.teamId}
+              size={13}
+              style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 4 }}
+            />
+            <span>{team}</span>
+            {opponent && opponent !== '—' && (
+              <>
+                <span className="matchup-vs"> vs </span>
+                <span>{opponent}</span>
+              </>
+            )}
           </div>
           <StatusBadge status={player.status} />
         </div>

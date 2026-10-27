@@ -25,11 +25,11 @@ def build_features():
     if df.empty:
         raise Exception("Input dataset is empty")
 
-    # ==============================
-    # FIX DATE TYPE & MERGE FGA
-    # ==============================
-
     df["game_date"] = pd.to_datetime(df["game_date"])
+
+    # Enforce historical cutoff: strictly >= 2026-02-06
+    cutoff_dt = pd.to_datetime("2026-02-06")
+    df = df[df["game_date"] >= cutoff_dt].copy()
 
     pbp_path = "data/play_by_play.parquet"
     if os.path.exists(pbp_path):

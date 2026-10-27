@@ -4,7 +4,7 @@ import sys
 import json
 import joblib
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -14,7 +14,8 @@ def construct_prediction_features(
     df_history: pd.DataFrame,
     target_date: Optional[str] = None,
     std3_impute_value: Optional[float] = None,
-    upcoming_games: Optional[pd.DataFrame] = None
+    upcoming_games: Optional[pd.DataFrame] = None,
+    roster_map: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> pd.DataFrame:
     """
     Given completed historical player games through game T:
@@ -49,6 +50,10 @@ def construct_prediction_features(
     df_sorted = df_history.sort_values(["personId", "game_date"]).copy()
     df_sorted["game_date"] = pd.to_datetime(df_sorted["game_date"])
 
+    # Enforce historical cutoff: strictly >= 2026-02-06
+    cutoff_dt = pd.to_datetime("2026-02-06")
+    df_sorted = df_sorted[df_sorted["game_date"] >= cutoff_dt].copy()
+
     # If fga is not in history, merge from play_by_play.parquet if available
     if "fga" not in df_sorted.columns:
         pbp_path = "data/play_by_play.parquet"
@@ -73,7 +78,18 @@ def construct_prediction_features(
         except Exception:
             pass
 
-    # Determine default target date (day after max historical game date) if not provided
+    # Determine default target date: align with upcoming slate if available
+    if target_date is None:
+        if upcoming_games is not None and not upcoming_games.empty and "nba_game_date" in upcoming_games.columns and pd.notna(upcoming_games["nba_game_date"].iloc[0]):
+            target_date = str(upcoming_games["nba_game_date"].iloc[0])
+        elif os.path.exists("data/next_day_games.parquet"):
+            try:
+                ndg = pd.read_parquet("data/next_day_games.parquet")
+                if not ndg.empty and "nba_game_date" in ndg.columns and pd.notna(ndg["nba_game_date"].iloc[0]):
+                    target_date = str(ndg["nba_game_date"].iloc[0])
+            except Exception:
+                pass
+
     if target_date is None:
         max_dt = df_sorted["game_date"].max()
         if pd.notna(max_dt):
@@ -118,8 +134,15 @@ def construct_prediction_features(
         fga_list = [float(x) for x in group["fga"].tolist()]
         last3_avg_fga = float(pd.Series(fga_list[-3:]).mean())
 
+        # Resolve current team and player name from authoritative roster if available
+        if roster_map and person_id in roster_map:
+            team_id = roster_map[person_id]["teamId"]
+            player_name = roster_map[person_id]["playerName"]
+        else:
+            team_id = latest_row["teamId"]
+            player_name = latest_row["playerName"]
+
         # Home / Away game context
-        team_id = latest_row["teamId"]
         is_home = 1 if team_id in home_team_ids else 0
 
         # Rolling 3-game sample standard deviation of completed ratings before target.
@@ -133,7 +156,7 @@ def construct_prediction_features(
             "gameId": latest_row.get("gameId", ""),
             "teamId": team_id,
             "personId": person_id,
-            "playerName": latest_row["playerName"],
+            "playerName": player_name,
             "rating": latest_row["rating"],
             "last_game_id": latest_row.get("gameId", ""),
             "last_game_date": latest_row["game_date"].strftime("%Y-%m-%d"),
@@ -150,6 +173,35 @@ def construct_prediction_features(
             "is_home": is_home,
             "std_3": std_3,
         })
+
+    # Add active roster players / rookies who have no completed historical games
+    if roster_map:
+        seen_pids = set(df_sorted["personId"].unique())
+        for r_pid, r_info in roster_map.items():
+            if r_pid not in seen_pids:
+                r_team_id = r_info["teamId"]
+                r_is_home = 1 if r_team_id in home_team_ids else 0
+                records.append({
+                    "gameId": "",
+                    "teamId": r_team_id,
+                    "personId": r_pid,
+                    "playerName": r_info["playerName"],
+                    "rating": 0.0,
+                    "last_game_id": "",
+                    "last_game_date": "",
+                    "game_date": target_date,
+                    "last_game": 0.0,
+                    "last3_avg": 0.0,
+                    "last5_avg": 0.0,
+                    "last7_avg": 0.0,
+                    "games_played_before_target": 0,
+                    "expand_mean": 0.0,
+                    "days_since_prev_game": 30,
+                    "is_b2b": 0,
+                    "last3_avg_fga": 0.0,
+                    "is_home": r_is_home,
+                    "std_3": std3_impute_value if std3_impute_value is not None else 0.0,
+                })
 
     df_res = pd.DataFrame(records)
     if std3_impute_value is not None and not df_res.empty and "std_3" in df_res.columns:
@@ -209,8 +261,22 @@ def predict_ratings(
     if "game_date" not in df.columns:
         raise ValueError("game_date column missing — check pipeline order")
 
+    # Load authoritative current 2026-27 rosters
+    roster_map = None
+    try:
+        from scripts.roster_provider import get_player_team_roster_map
+        roster_map = get_player_team_roster_map()
+        print(f"Loaded current roster map with {len(roster_map)} active players")
+    except Exception as e:
+        print(f"Warning: could not load current rosters ({e}). Falling back to historical assignments.")
+
     # Construct features for upcoming game T+1 using completed games through T
-    latest = construct_prediction_features(df, target_date=target_date, std3_impute_value=std3_median)
+    latest = construct_prediction_features(
+        df,
+        target_date=target_date,
+        std3_impute_value=std3_median,
+        roster_map=roster_map
+    )
 
     if latest.empty:
         raise Exception("No eligible players with at least 1 completed game for prediction")

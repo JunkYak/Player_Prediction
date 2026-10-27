@@ -73,14 +73,16 @@ def production_env(tmp_path):
     df.to_parquet(data_dir / "frontend_all.parquet")
     df.to_parquet(data_dir / "frontend_home.parquet")
 
-    # Write initial pipeline status
+    # Write initial pipeline status with current timestamp so it does not falsely trigger >36h staleness
+    from datetime import datetime
+    now_iso = datetime.now().isoformat()
     status_file = data_dir / "pipeline_status.json"
     with open(status_file, "w") as f:
         json.dump({
             "status": "SUCCESS",
             "mode": "full",
-            "start_time": "2026-10-02T10:00:00",
-            "end_time": "2026-10-02T10:02:15",
+            "start_time": now_iso,
+            "end_time": now_iso,
             "duration_seconds": 135.0,
             "error": None,
             "artifacts_updated": True,

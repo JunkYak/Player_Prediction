@@ -121,6 +121,8 @@ def build_frontend_dataset(
             .groupby("teamId")
             .head(3)
         )
+        if not games.empty and "nba_game_date" in games.columns and pd.notna(games["nba_game_date"].iloc[0]):
+            home_df["game_date"] = str(games["nba_game_date"].iloc[0])
         home_df = home_df.sort_values(
             ["status_rank", "predicted_rating"],
             ascending=[True, False]

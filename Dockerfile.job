@@ -1,0 +1,40 @@
+# ==============================================================================
+# NBA Player Performance Prediction System — ACA Job Pipeline Dockerfile
+# ==============================================================================
+# Dedicated batch runner image for scheduled daily pipeline in Azure Container Apps.
+# Does NOT start the FastAPI serving layer or include Node.js / React build artifacts.
+# ==============================================================================
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PROPREDICT_DATA_DIR=/app/data \
+    PROPREDICT_ENV=production \
+    AZURE_STORAGE_ACCOUNT=azurefunceesh \
+    AZURE_HISTORY_CONTAINER=propredict-history \
+    AZURE_SERVING_CONTAINER=propredict-serving
+
+WORKDIR /app
+
+# Install curl for container diagnostics
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python production dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy ML model, rating engine, schemas, pipeline scripts, and orchestrators
+COPY api/ ./api/
+COPY scripts/ ./scripts/
+COPY models/ ./models/
+COPY rating_engine/ ./rating_engine/
+COPY run_full_pipeline.py .
+COPY orchestrator.py .
+
+# Create persistent data directory
+RUN mkdir -p /app/data
+
+# Batch job entrypoint: executes run_aca_job.py and exits with process exit code
+ENTRYPOINT ["python", "scripts/run_aca_job.py"]

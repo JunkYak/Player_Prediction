@@ -29,9 +29,10 @@ from scripts.compute_player_ratings import compute_player_ratings
 from scripts.add_game_dates import add_game_dates
 from scripts.build_features import build_features
 from scripts.train_model import train_model
+from scripts.roster_provider import refresh_current_rosters
+from scripts.get_next_day_games import get_next_day_games
 from scripts.predict_ratings import predict_ratings
 from scripts.apply_injury_status import apply_injury_status
-from scripts.get_next_day_games import get_next_day_games
 from scripts.build_frontend_dataset import build_frontend_dataset
 from scripts.team_rankings import build_team_rankings
 
@@ -78,7 +79,7 @@ def generate_frontend_json():
 # PIPELINE MODES
 # ==============================
 
-def run_full_pipeline(skip_fetch: bool = False, skip_train: bool = False, export_json: bool = False):
+def run_full_pipeline(skip_fetch: bool = False, skip_train: bool = False, export_json: bool = False, publish_azure: bool = False):
     print("=" * 60)
     print("🚀 STARTING FULL PRODUCTION PIPELINE")
     print("=" * 60)
@@ -97,15 +98,21 @@ def run_full_pipeline(skip_fetch: bool = False, skip_train: bool = False, export
     else:
         print("\n🔹 [5/11] Skipping Model Training (--skip-train)...")
 
+    run_step("Refresh Current Rosters", refresh_current_rosters)
+    run_step("Get Next Day Games", get_next_day_games)
     run_step("Predict Ratings", predict_ratings)
     run_step("Apply Injury Status", apply_injury_status)
-    run_step("Get Next Day Games", get_next_day_games)
     run_step("Build Frontend Dataset", build_frontend_dataset)
     if export_json:
         run_step("Generate Frontend JSON", generate_frontend_json)
     else:
         print("\n🔹 Skipping legacy Frontend JSON generation (FastAPI serves parquet directly)...")
     run_step("Build Team Rankings", build_team_rankings)
+
+    if publish_azure:
+        from scripts.azure_blob import publish_historical_data, publish_serving_snapshot
+        run_step("Publish Historical Data (Azure Blob)", lambda: publish_historical_data())
+        run_step("Publish Serving Snapshot (Azure Blob)", lambda: publish_serving_snapshot())
 
     print("\n" + "=" * 60)
     print("🎉 FULL PIPELINE EXECUTION COMPLETE")
@@ -127,20 +134,25 @@ def run_training_pipeline():
     print("=" * 60)
 
 
-def run_prediction_pipeline(export_json: bool = False):
+def run_prediction_pipeline(export_json: bool = False, publish_azure: bool = False):
     print("=" * 60)
     print("🚀 STARTING PREDICTION-ONLY PIPELINE")
     print("=" * 60)
 
+    run_step("Refresh Current Rosters", refresh_current_rosters)
+    run_step("Get Next Day Games", get_next_day_games)
     run_step("Predict Ratings", predict_ratings)
     run_step("Apply Injury Status", apply_injury_status)
-    run_step("Get Next Day Games", get_next_day_games)
     run_step("Build Frontend Dataset", build_frontend_dataset)
     if export_json:
         run_step("Generate Frontend JSON", generate_frontend_json)
     else:
         print("\n🔹 Skipping legacy Frontend JSON generation (FastAPI serves parquet directly)...")
     run_step("Build Team Rankings", build_team_rankings)
+
+    if publish_azure:
+        from scripts.azure_blob import publish_serving_snapshot
+        run_step("Publish Serving Snapshot (Azure Blob)", lambda: publish_serving_snapshot())
 
     print("\n" + "=" * 60)
     print("🎉 PREDICTION PIPELINE COMPLETE")
@@ -178,6 +190,11 @@ def parse_args(argv=None):
         action="store_true",
         help="Export static JSON files to lineup-builder/public (legacy compatibility)"
     )
+    parser.add_argument(
+        "--publish-azure",
+        action="store_true",
+        help="Publish historical and serving artifacts to Azure Blob Storage upon pipeline completion"
+    )
     return parser.parse_args(argv)
 
 
@@ -185,7 +202,12 @@ def main(argv=None):
     args = parse_args(argv)
 
     if args.mode == "full":
-        kwargs = {"skip_fetch": args.skip_fetch, "skip_train": args.skip_train}
+        kwargs = {
+            "skip_fetch": args.skip_fetch,
+            "skip_train": args.skip_train,
+        }
+        if getattr(args, "publish_azure", False):
+            kwargs["publish_azure"] = True
         if getattr(args, "export_json", False):
             kwargs["export_json"] = True
         run_full_pipeline(**kwargs)
@@ -193,6 +215,8 @@ def main(argv=None):
         run_training_pipeline()
     elif args.mode == "predict":
         kwargs = {}
+        if getattr(args, "publish_azure", False):
+            kwargs["publish_azure"] = True
         if getattr(args, "export_json", False):
             kwargs["export_json"] = True
         run_prediction_pipeline(**kwargs)

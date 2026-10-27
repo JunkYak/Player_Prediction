@@ -8,6 +8,7 @@ export default function LineupSection({
   onSlotClick,
   onRemoveSlot,
   onClearAll,
+  onDetail,
   gamesAvailable = true,
 }) {
   const filledCount = slots.filter(Boolean).length;
@@ -69,6 +70,7 @@ export default function LineupSection({
               projectedValue={projectedValue}
               onClick={() => onSlotClick(i)}
               onRemove={() => onRemoveSlot && onRemoveSlot(i)}
+              onDetail={onDetail}
             />
           );
         })}

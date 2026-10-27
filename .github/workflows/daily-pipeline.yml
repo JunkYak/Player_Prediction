@@ -1,0 +1,135 @@
+name: Daily NBA Prediction Pipeline
+
+on:
+  schedule:
+    # 05:00 America/New_York target:
+    # - 09:00 UTC during Eastern Daylight Time (EDT, UTC-4) -> 05:00 EDT
+    # - 10:00 UTC during Eastern Standard Time (EST, UTC-5) -> 05:00 EST
+    - cron: '0 9,10 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Bypass schedule window and daily idempotency guard'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-pipeline
+  cancel-in-progress: false
+
+# OIDC Federated Identity Configuration:
+# - Token Issuer: https://token.actions.githubusercontent.com
+# - Audience (aud): api://AzureADTokenExchange
+# - Federated Subject (sub): repo:JunkYak/Player_Prediction:ref:refs/heads/main
+#   (Consistent across schedule and workflow_dispatch runs without environment ambiguity)
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run-daily-pipeline:
+    name: Execute Daily Pipeline & Publish Snapshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Schedule Guard (05:00 America/New_York)
+        id: schedule_guard
+        run: |
+          python scripts/check_schedule.py ${{ (github.event_name == 'workflow_dispatch' && inputs.force) && '--force' || '' }}
+
+      - name: Log in to Azure via OIDC
+        if: steps.schedule_guard.outputs.should_run == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Acquire Atomic Daily Single-Writer Claim
+        if: steps.schedule_guard.outputs.should_run == 'true'
+        id: claim_guard
+        run: |
+          python scripts/azure_blob.py acquire-claim \
+            --account azurefunceesh \
+            --container propredict-serving \
+            --run-id "${{ github.run_id }}" \
+            --git-sha "${{ github.sha }}" \
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.force) && '--force' || '' }}
+
+      - name: Restore Canonical Historical Baseline
+        if: steps.schedule_guard.outputs.should_run == 'true' && steps.claim_guard.outputs.claim_acquired == 'true'
+        run: |
+          echo "Restoring play_by_play.parquet from propredict-history..."
+          python scripts/azure_blob.py restore-history \
+            --account azurefunceesh \
+            --container propredict-history \
+            --target data/play_by_play.parquet
+
+      - name: Execute Daily Pipeline (Model Retraining Disabled)
+        if: steps.schedule_guard.outputs.should_run == 'true' && steps.claim_guard.outputs.claim_acquired == 'true'
+        run: |
+          echo "Running daily pipeline with model training disabled..."
+          python orchestrator.py --once
+
+      - name: Validate Pipeline Artifacts Prior to Publication
+        if: steps.schedule_guard.outputs.should_run == 'true' && steps.claim_guard.outputs.claim_acquired == 'true'
+        run: |
+          echo "Validating pipeline artifacts before publishing..."
+          python scripts/azure_blob.py validate-artifacts \
+            --data-dir data
+
+      - name: Publish Serving Snapshot
+        if: steps.schedule_guard.outputs.should_run == 'true' && steps.claim_guard.outputs.claim_acquired == 'true'
+        run: |
+          echo "Publishing immutable serving snapshot to propredict-serving..."
+          python scripts/azure_blob.py publish-serving \
+            --account azurefunceesh \
+            --container propredict-serving \
+            --data-dir data \
+            --run-id "${{ github.run_id }}" \
+            --git-sha "${{ github.sha }}"
+
+      - name: Publish Updated Historical Data
+        if: steps.schedule_guard.outputs.should_run == 'true' && steps.claim_guard.outputs.claim_acquired == 'true'
+        run: |
+          echo "Publishing validated historical data to propredict-history..."
+          python scripts/azure_blob.py publish-history \
+            --account azurefunceesh \
+            --container propredict-history \
+            --source data/play_by_play.parquet
+
+      - name: Complete Daily Claim
+        if: steps.schedule_guard.outputs.should_run == 'true' && steps.claim_guard.outputs.claim_acquired == 'true'
+        run: |
+          echo "Marking daily claim as COMPLETED..."
+          python scripts/azure_blob.py complete-claim \
+            --account azurefunceesh \
+            --container propredict-serving \
+            --run-id "${{ github.run_id }}"
+
+      - name: Fail Daily Claim On Error
+        if: failure() && steps.claim_guard.outputs.claim_acquired == 'true'
+        run: |
+          echo "Marking daily claim as FAILED to permit safe retry..."
+          python scripts/azure_blob.py fail-claim \
+            --account azurefunceesh \
+            --container propredict-serving \
+            --run-id "${{ github.run_id }}" \
+            --error "GitHub Actions workflow run ${{ github.run_id }} failed"
+

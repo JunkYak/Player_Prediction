@@ -137,7 +137,9 @@ class PlayerIdentityResolver:
     def __init__(self):
         self._name_to_players: Dict[str, List[dict]] = {}
         self._team_lookup: Dict[str, int] = {}
+        self._active_roster_players: Dict[str, List[dict]] = {}
         self._init_static_db()
+        self._load_current_rosters()
 
     def _normalize_text(self, text: Optional[str]) -> str:
         if not text:
@@ -176,6 +178,26 @@ class PlayerIdentityResolver:
         except Exception as e:
             logger.warning(f"Failed to initialize NBA static player database: {e}")
 
+    def _load_current_rosters(self):
+        """Optionally load current 2026-27 rosters to disambiguate historical player name collisions."""
+        self._active_roster_players = {}
+        data_dir = os.environ.get("PROPREDICT_DATA_DIR", "data")
+        roster_path = os.path.join(data_dir, "current_rosters.parquet")
+        if os.path.exists(roster_path):
+            try:
+                rdf = pd.read_parquet(roster_path)
+                for _, row in rdf.iterrows():
+                    pid = int(row["personId"])
+                    tid = int(row["teamId"])
+                    name = str(row["playerName"])
+                    norm = self._normalize_text(name)
+                    self._active_roster_players.setdefault(norm, []).append({"id": pid, "teamId": tid, "full_name": name})
+                    stripped = self._strip_suffix(norm)
+                    if stripped != norm:
+                        self._active_roster_players.setdefault(stripped, []).append({"id": pid, "teamId": tid, "full_name": name})
+            except Exception as e:
+                logger.warning(f"Could not load current rosters for identity disambiguation: {e}")
+
     def resolve_team_id(self, team_str: Optional[str]) -> Optional[int]:
         if not team_str:
             return None
@@ -203,8 +225,9 @@ class PlayerIdentityResolver:
         Rules:
         1. Never match on surname alone.
         2. Full name exact normalized match -> unique ID.
-        3. If multiple historical matches exist, prioritize is_active == True.
-        4. If still ambiguous, do not guess -> return (None, parsed_name, True).
+        3. If multiple historical matches exist, check current active 2026-27 roster.
+        4. Prioritize is_active == True from static DB.
+        5. If still ambiguous, do not guess -> return (None, parsed_name, True).
         """
         parsed_name = self.parse_raw_name(raw_name)
         if not parsed_name:
@@ -218,6 +241,12 @@ class PlayerIdentityResolver:
             stripped = self._strip_suffix(norm_name)
             candidates = self._name_to_players.get(stripped, [])
 
+        # If not in static NBA DB (e.g. 2026-27 rookies or new players), check current active rosters
+        if not candidates and hasattr(self, "_active_roster_players") and self._active_roster_players:
+            roster_candidates = self._active_roster_players.get(norm_name) or self._active_roster_players.get(self._strip_suffix(norm_name), [])
+            if roster_candidates:
+                candidates = [{"id": r["id"], "full_name": r["full_name"], "is_active": True} for r in roster_candidates]
+
         if not candidates:
             return None, parsed_name, False
 
@@ -225,7 +254,19 @@ class PlayerIdentityResolver:
         if len(candidates) == 1:
             return candidates[0]["id"], candidates[0]["full_name"], False
 
-        # Filter for active players
+        # Ambiguity resolution using current active roster
+        if hasattr(self, "_active_roster_players") and self._active_roster_players:
+            roster_matches = self._active_roster_players.get(norm_name) or self._active_roster_players.get(self._strip_suffix(norm_name), [])
+            if roster_matches:
+                if team_str:
+                    target_tid = self.resolve_team_id(team_str)
+                    team_match = [r for r in roster_matches if r["teamId"] == target_tid]
+                    if len(team_match) == 1:
+                        return team_match[0]["id"], team_match[0]["full_name"], False
+                if len(roster_matches) == 1:
+                    return roster_matches[0]["id"], roster_matches[0]["full_name"], False
+
+        # Filter for active players from static registry
         active_candidates = [c for c in candidates if c.get("is_active")]
         if len(active_candidates) == 1:
             return active_candidates[0]["id"], active_candidates[0]["full_name"], False
@@ -271,7 +312,8 @@ class InjuryProvider:
     def get_injury_report(
         self,
         target_date: Optional[datetime] = None,
-        days_back_limit: int = 3
+        days_back_limit: int = 3,
+        fallback_to_cache: bool = False,
     ) -> InjuryReportResult:
         """
         Fetch official injury report for the target date.
@@ -302,6 +344,44 @@ class InjuryProvider:
                 break
 
         if report_df is None:
+            # Fallback: check for existing verified injury cache when explicitly enabled
+            if fallback_to_cache or os.environ.get("INJURY_CACHE_FALLBACK", "0") == "1":
+                data_dir = os.environ.get("PROPREDICT_DATA_DIR", "data")
+                cache_file = os.path.join(data_dir, "predicted_ratings_with_status.parquet")
+                if os.path.exists(cache_file):
+                    logger.info("Live PDF parse unavailable. Falling back to cached injury data from %s", cache_file)
+                    try:
+                        cdf = pd.read_parquet(cache_file)
+                        if "personId" in cdf.columns and "status" in cdf.columns:
+                            cached_records = []
+                            for _, crow in cdf.iterrows():
+                                c_status = str(crow.get("status", CanonicalStatus.ACTIVE))
+                                if c_status != CanonicalStatus.ACTIVE:
+                                    cached_records.append(
+                                        CanonicalInjuryRecord(
+                                            personId=int(crow["personId"]),
+                                            playerName=str(crow.get("playerName", "")),
+                                            teamId=int(crow["teamId"]) if "teamId" in crow and pd.notna(crow["teamId"]) else None,
+                                            teamName=str(crow.get("teamName", "")),
+                                            status=c_status,
+                                            rawStatus=c_status,
+                                            reason=str(crow.get("injury_reason", "Cached status")),
+                                            reportDate=base_dt.strftime("%Y-%m-%d"),
+                                            source="cached_injury_report"
+                                        )
+                                    )
+                            if cached_records:
+                                logger.info("Successfully recovered %d cached injury records.", len(cached_records))
+                                return InjuryReportResult(
+                                    records=cached_records,
+                                    success=True,
+                                    error_message=None,
+                                    reportDate=base_dt.strftime("%Y-%m-%d"),
+                                    source="cached_injury_report"
+                                )
+                    except Exception as ce:
+                        logger.warning("Failed to recover cached injury data: %s", ce)
+
             err_msg = f"No valid injury report could be fetched for date {base_dt.strftime('%Y-%m-%d')} (last error: {last_error})"
             logger.warning(err_msg)
             return InjuryReportResult(

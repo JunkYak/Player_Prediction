@@ -13,6 +13,10 @@ class Settings:
     env: str
     reload: bool
     static_dir: Optional[Path] = None
+    azure_storage_account: Optional[str] = None
+    azure_serving_container: str = "propredict-serving"
+    azure_manifest_name: str = "current_manifest.json"
+    azure_blob_check_interval: int = 60
 
     @property
     def frontend_home_path(self) -> Path:
@@ -46,10 +50,23 @@ def get_settings() -> Settings:
     static_dir_path = Path(raw_static_dir)
     static_dir = static_dir_path if static_dir_path.is_dir() else None
 
+    azure_account = os.environ.get("AZURE_STORAGE_ACCOUNT")
+    azure_container = os.environ.get("AZURE_SERVING_CONTAINER", "propredict-serving")
+    azure_manifest = os.environ.get("AZURE_MANIFEST_NAME", "current_manifest.json")
+    try:
+        check_interval = int(os.environ.get("AZURE_BLOB_CHECK_INTERVAL_SECONDS", "60"))
+    except ValueError:
+        check_interval = 60
+
     return Settings(
         data_dir=Path(raw_data_dir),
         allowed_origins=origins,
         env=env,
         reload=reload,
         static_dir=static_dir,
+        azure_storage_account=azure_account,
+        azure_serving_container=azure_container,
+        azure_manifest_name=azure_manifest,
+        azure_blob_check_interval=check_interval,
     )
+

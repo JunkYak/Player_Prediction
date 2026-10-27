@@ -34,6 +34,8 @@ async def lifespan(app: FastAPI):
     app.state.load_error = state.load_error
     app.state.load_error_code = state.load_error_code
     app.state.last_mtime = state.last_mtime
+    app.state.current_snapshot_id = state.current_snapshot_id
+    app.state.last_blob_check = state.last_blob_check
 
     yield
 
@@ -58,6 +60,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.state.load_error = "Serving artifacts are not loaded"
     app.state.load_error_code = "ARTIFACT_NOT_LOADED"
     app.state.last_mtime = None
+    app.state.current_snapshot_id = None
+    app.state.last_blob_check = None
 
     # CORS configuration
     app.add_middleware(

@@ -181,6 +181,7 @@ def execute_daily_pipeline(
     skip_fetch: bool = False,
     skip_train: bool = True,
     export_json: bool = False,
+    publish_azure: bool = False,
     status_file: str = DEFAULT_STATUS_FILE,
     lock_file: str = DEFAULT_LOCK_FILE,
 ) -> bool:
@@ -196,7 +197,7 @@ def execute_daily_pipeline(
 
     start_time = datetime.now()
     logger.info("=" * 60)
-    logger.info("ORCHESTRATOR: Starting daily pipeline (mode=%s, skip_fetch=%s, skip_train=%s)", mode, skip_fetch, skip_train)
+    logger.info("ORCHESTRATOR: Starting daily pipeline (mode=%s, skip_fetch=%s, skip_train=%s, publish_azure=%s)", mode, skip_fetch, skip_train, publish_azure)
     logger.info("=" * 60)
 
     record_status(
@@ -209,10 +210,16 @@ def execute_daily_pipeline(
     )
 
     try:
+        kwargs = {"skip_fetch": skip_fetch, "skip_train": skip_train, "export_json": export_json}
+        if publish_azure:
+            kwargs["publish_azure"] = True
         if mode == "full":
-            run_full_pipeline(skip_fetch=skip_fetch, skip_train=skip_train, export_json=export_json)
+            run_full_pipeline(**kwargs)
         elif mode == "predict":
-            run_prediction_pipeline(export_json=export_json)
+            pred_kwargs = {"export_json": export_json}
+            if publish_azure:
+                pred_kwargs["publish_azure"] = True
+            run_prediction_pipeline(**pred_kwargs)
         else:
             raise ValueError(f"Unsupported orchestrator mode: {mode}")
 
@@ -354,6 +361,11 @@ def parse_args(argv=None):
         action="store_true",
         help="Also export legacy static JSON files to lineup-builder/public",
     )
+    parser.add_argument(
+        "--publish-azure",
+        action="store_true",
+        help="Publish historical and serving artifacts to Azure Blob Storage",
+    )
     return parser.parse_args(argv)
 
 
@@ -375,6 +387,7 @@ def main(argv=None):
             skip_fetch=args.skip_fetch,
             skip_train=skip_train,
             export_json=args.export_json,
+            publish_azure=args.publish_azure,
         )
         sys.exit(0 if success else 1)
 

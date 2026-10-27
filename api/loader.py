@@ -3,8 +3,10 @@
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
@@ -74,6 +76,9 @@ class ServingState:
     load_error: Optional[str] = None
     load_error_code: Optional[str] = None
     last_mtime: Optional[float] = None
+    current_snapshot_id: Optional[str] = None
+    last_blob_check: Optional[float] = None
+
 
 
 def validate_schema(df: pd.DataFrame, artifact_name: str) -> None:
@@ -113,15 +118,19 @@ def dataframe_to_canonical_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
     return records
 
 
-def load_serving_state(settings: Settings) -> ServingState:
-    """Load parquet artifacts from disk into in-memory serving state.
+def load_snapshot_state(
+    all_path: Path,
+    home_path: Path,
+    snapshot_id: Optional[str] = None,
+) -> ServingState:
+    """Load and validate both serving parquet artifacts together from a single snapshot.
 
+    Guarantees that both artifacts are validated together before constructing ServingState.
     Never exposes full filesystem paths in user-facing error messages.
     """
-    state = ServingState()
+    state = ServingState(current_snapshot_id=snapshot_id)
 
     # 1. Verify and read frontend_all.parquet
-    all_path = settings.frontend_all_path
     if not all_path.exists():
         logger.error("Missing artifact: frontend_all.parquet does not exist")
         state.load_error = "frontend_all.parquet is missing"
@@ -150,7 +159,6 @@ def load_serving_state(settings: Settings) -> ServingState:
         return state
 
     # 2. Verify and read frontend_home.parquet
-    home_path = settings.frontend_home_path
     if not home_path.exists():
         logger.error("Missing artifact: frontend_home.parquet does not exist")
         state.load_error = "frontend_home.parquet is missing"
@@ -184,10 +192,9 @@ def load_serving_state(settings: Settings) -> ServingState:
         state.load_error_code = "ARTIFACT_UNREADABLE"
         return state
 
-    # 4. Canonicalize records for all_players
+    # 4. Canonicalize records for both files together
     state.all_players = dataframe_to_canonical_records(df_all)
 
-    # 5. Canonicalize records for home_players and derive game_date
     if len(df_home) == 0:
         state.home_players = []
         state.game_date = None
@@ -200,15 +207,70 @@ def load_serving_state(settings: Settings) -> ServingState:
             state.game_date = None
 
     state.artifacts_loaded = True
-    logger.info("Loaded frontend_home.parquet: %d players", len(state.home_players))
-    logger.info("Loaded frontend_all.parquet: %d players", len(state.all_players))
-    logger.info("Serving data generated at: %s", state.generated_at)
+    logger.info(
+        "Serving state loaded successfully (%s): %d all, %d slate",
+        snapshot_id or "local",
+        len(state.all_players),
+        len(state.home_players),
+    )
+    return state
+
+
+def load_serving_state(settings: Settings) -> ServingState:
+    """Load parquet artifacts from disk into in-memory serving state.
+
+    If azure_storage_account is configured, attempts to synchronize the latest
+    serving snapshot from propredict-serving first.
+    Never exposes full filesystem paths in user-facing error messages.
+    """
+    snapshot_dir = None
+    snap_id = None
+
+    # 0. Remote Azure Blob synchronization (if configured)
+    if settings.azure_storage_account:
+        try:
+            from scripts.azure_blob import download_serving_snapshot
+            downloaded, snap_id, snapshot_dir = download_serving_snapshot(
+                account_name=settings.azure_storage_account,
+                container_name=settings.azure_serving_container,
+                target_dir=str(settings.data_dir),
+                known_snapshot_id=None,
+            )
+        except Exception as e:
+            logger.error("Failed to sync initial serving snapshot from Azure Blob: %s", e)
+            if not settings.frontend_all_path.exists():
+                return ServingState(
+                    artifacts_loaded=False,
+                    load_error="Serving snapshot could not be loaded from Azure Blob Storage",
+                    load_error_code="BLOB_SNAPSHOT_UNAVAILABLE",
+                )
+
+    # If snapshot directory exists and has files, load from it; otherwise load from data_dir
+    if snapshot_dir and (snapshot_dir / "frontend_all.parquet").exists():
+        state = load_snapshot_state(
+            snapshot_dir / "frontend_all.parquet",
+            snapshot_dir / "frontend_home.parquet",
+            snapshot_id=snap_id,
+        )
+    else:
+        state = load_snapshot_state(
+            settings.frontend_all_path,
+            settings.frontend_home_path,
+            snapshot_id=snap_id,
+        )
+
+    if settings.azure_storage_account and state.artifacts_loaded:
+        state.last_blob_check = time.time()
+
     return state
 
 
 def reload_serving_state_if_stale(app: Any) -> bool:
-    """Check if on-disk artifacts have been updated and reload them into app.state.
+    """Check if on-disk artifacts or remote Blob snapshots have been updated.
 
+    If azure_storage_account is configured, throttles remote manifest checks
+    using azure_blob_check_interval.
+    Atomically updates app.state when a verified snapshot is available.
     Returns True if state was reloaded, False otherwise.
     Never raises exceptions; preserves existing valid state if reload fails.
     """
@@ -216,6 +278,49 @@ def reload_serving_state_if_stale(app: Any) -> bool:
     if settings is None:
         return False
 
+    # 1. Periodic Azure Blob snapshot check (if configured)
+    if settings.azure_storage_account:
+        now = time.time()
+        last_check = getattr(app.state, "last_blob_check", 0) or 0
+        if now - last_check >= settings.azure_blob_check_interval:
+            app.state.last_blob_check = now
+            try:
+                from scripts.azure_blob import download_serving_snapshot
+                curr_snap = getattr(app.state, "current_snapshot_id", None)
+                updated, new_snap, snap_dir = download_serving_snapshot(
+                    account_name=settings.azure_storage_account,
+                    container_name=settings.azure_serving_container,
+                    target_dir=str(settings.data_dir),
+                    known_snapshot_id=curr_snap,
+                )
+                if updated and snap_dir:
+                    new_state = load_snapshot_state(
+                        snap_dir / "frontend_all.parquet",
+                        snap_dir / "frontend_home.parquet",
+                        snapshot_id=new_snap,
+                    )
+                    if new_state.artifacts_loaded:
+                        # Atomic in-memory state swap
+                        app.state.serving_state = new_state
+                        app.state.home_players = new_state.home_players
+                        app.state.all_players = new_state.all_players
+                        app.state.generated_at = new_state.generated_at
+                        app.state.game_date = new_state.game_date
+                        app.state.current_snapshot_id = new_state.current_snapshot_id
+                        app.state.artifacts_loaded = True
+                        app.state.load_error = None
+                        app.state.load_error_code = None
+                        app.state.last_mtime = new_state.last_mtime
+                        logger.info("Serving state atomically refreshed from snapshot %s: %s", new_snap, new_state.generated_at)
+                        return True
+                    else:
+                        logger.warning("Downloaded snapshot %s failed validation; retaining prior serving state", new_snap)
+                        return False
+            except Exception as e:
+                logger.warning("Periodic Azure Blob snapshot check failed: %s; retaining in-memory state", e)
+                return False
+
+    # 2. Local filesystem mtime check (for offline/local dev or non-Azure runs)
     all_path = settings.frontend_all_path
     if not all_path.exists():
         return False
@@ -230,8 +335,13 @@ def reload_serving_state_if_stale(app: Any) -> bool:
         return False
 
     logger.info("Newer serving artifact detected on disk (mtime %s > %s). Reloading...", current_mtime, last_mtime)
-    new_state = load_serving_state(settings)
+    new_state = load_snapshot_state(
+        settings.frontend_all_path,
+        settings.frontend_home_path,
+        snapshot_id=getattr(app.state, "current_snapshot_id", None),
+    )
     if new_state.artifacts_loaded:
+        app.state.serving_state = new_state
         app.state.home_players = new_state.home_players
         app.state.all_players = new_state.all_players
         app.state.generated_at = new_state.generated_at
@@ -240,6 +350,8 @@ def reload_serving_state_if_stale(app: Any) -> bool:
         app.state.load_error = None
         app.state.load_error_code = None
         app.state.last_mtime = new_state.last_mtime
+        if new_state.current_snapshot_id:
+            app.state.current_snapshot_id = new_state.current_snapshot_id
         logger.info("Serving state refreshed successfully: %s", new_state.generated_at)
         return True
     else:

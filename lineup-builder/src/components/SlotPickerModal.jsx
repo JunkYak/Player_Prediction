@@ -1,9 +1,25 @@
+import { useEffect } from 'react';
 import { X, User, ArrowRight } from 'lucide-react';
 import StatusBadge from './StatusBadge';
-import { SLOT_MULTIPLIERS, getSlotProjectedValue } from '../constants';
+import { SLOT_MULTIPLIERS } from '../constants';
 
 // Modal for picking which slot to assign a player to
 export default function SlotPickerModal({ player, slots, onSelectSlot, onClose }) {
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    }
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   if (!player) return null;
 
   const rawRating = player.predicted_rating;
@@ -13,11 +29,12 @@ export default function SlotPickerModal({ player, slots, onSelectSlot, onClose }
   const opponent = player.opponentName || '—';
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div className="modal-box modal-box-wide" onClick={e => e.stopPropagation()}>
+        <div className="modal-sheet-handle" aria-hidden="true" />
         <div className="modal-header">
           <span className="modal-title">Assign to Lineup Slot</span>
-          <button className="modal-close" onClick={onClose}><X size={18} /></button>
+          <button className="modal-close" onClick={onClose} aria-label="Close modal"><X size={18} /></button>
         </div>
 
         {/* Selected player preview */}
