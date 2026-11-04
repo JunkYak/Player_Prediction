@@ -1,0 +1,49 @@
+# FPL scoring rules used to turn predicted components into expected points.
+#
+# Provenance (checked 2026-11-04):
+#   * Point values: bootstrap-static -> game_config.scoring for 2026-27.
+#   * Thresholds (60 min, per-3 saves, per-2 conceded, defensive contribution
+#     cut-offs) are not in the API. They were checked by rebuilding
+#     total_points from the per-fixture components in the vaastav archive:
+#     0 mismatches over every row of 2022-23 .. 2026-27 (GW1-6) with the values
+#     below. Re-run tests/fpl/test_fpl_scoring.py::test_archive_reconstruction
+#     after any rule change.
+#   * goals_scored.GKP can't be checked from data (no GK goals in that window);
+#     it is the 2026-27 game_config value.
+#
+# Per-position maps use FPL short names: GKP, DEF, MID, FWD.
+
+default:
+  appearance:
+    short_play: 1          # 1-59 minutes
+    long_play: 2           # 60+ minutes
+    long_play_minutes: 60
+  goals_scored: {GKP: 10, DEF: 6, MID: 5, FWD: 4}
+  assists: 3
+  clean_sheets: {GKP: 4, DEF: 4, MID: 1, FWD: 0}   # requires 60+ minutes
+  goals_conceded:                                  # per `per` conceded on pitch
+    points: {GKP: -1, DEF: -1, MID: 0, FWD: 0}
+    per: 2
+  saves:
+    points: 1
+    per: 3
+  penalties_saved: 5
+  penalties_missed: -2
+  yellow_cards: -1
+  red_cards: -3
+  own_goals: -2
+  bonus: 1                                         # 1 point per bonus point (1-3)
+  defensive_contribution:
+    points: {GKP: 0, DEF: 2, MID: 2, FWD: 2}
+    # DEF counts CBIT (clearances, blocks, interceptions, tackles);
+    # MID/FWD count CBIRT (CBIT + recoveries). Archive column
+    # `defensive_contribution` already holds the position-appropriate count.
+    threshold: {GKP: null, DEF: 10, MID: 12, FWD: 12}
+
+# Per-season overrides, deep-merged onto `default`.
+seasons:
+  "2022-23": &pre_defcon
+    defensive_contribution:
+      points: {GKP: 0, DEF: 0, MID: 0, FWD: 0}
+  "2023-24": *pre_defcon
+  "2024-25": *pre_defcon

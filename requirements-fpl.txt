@@ -1,0 +1,13 @@
+# ==============================================================================
+# FPL prediction package (fpl/) — extra dependencies on top of requirements.txt
+# ==============================================================================
+# Kept separate so the NBA Docker images and daily pipeline don't change.
+#   pip install -r requirements.txt -r requirements-fpl.txt
+
+lightgbm>=4.3.0      # direct-GBM baseline now; minutes/bonus models from PR 2
+scipy>=1.11.0        # Spearman, Poisson / team-strength fitting
+pulp>=2.8.0          # squad / XI / transfer MILP (CBC), used from PR 3
+pyyaml>=6.0          # fpl/scoring.yaml
+
+# Dev-only (not needed until PR 2 model explainability):
+# shap>=0.45

@@ -22,6 +22,9 @@ data/*.jsonl
 data/*.lock
 data/pipeline_status.json
 
+# FPL raw downloads, API cache, snapshots, backtest output
+data/fpl/
+
 # Models
 models/*.pkl
 !models/rating_model.pkl
