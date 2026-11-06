@@ -67,6 +67,11 @@ def production_env(tmp_path):
         "opponentId": 1610612748,
         "opponentName": "Heat",
         "headshot": "https://cdn.nba.com/headshots/nba/latest/1040x760/1628369.png",
+        "season_game_count": 10,
+        "season_average_rating": 91.0,
+        "season_percentile": 95.0,
+        "season_performance_bonus": 0.0,
+        "adjusted_predicted_rating": 93.5,
     }
 
     df = pd.DataFrame([player_data])

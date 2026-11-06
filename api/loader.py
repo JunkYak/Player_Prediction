@@ -5,7 +5,8 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -40,6 +41,11 @@ REQUIRED_COLUMNS = [
     "opponentId",
     "opponentName",
     "headshot",
+    "season_game_count",
+    "season_average_rating",
+    "season_percentile",
+    "season_performance_bonus",
+    "adjusted_predicted_rating",
 ]
 
 CANONICAL_PLAYER_FIELDS = [
@@ -55,6 +61,11 @@ CANONICAL_PLAYER_FIELDS = [
     "last_game",
     "last3_avg",
     "last7_avg",
+    "season_game_count",
+    "season_average_rating",
+    "season_percentile",
+    "season_performance_bonus",
+    "adjusted_predicted_rating",
 ]
 
 
@@ -70,6 +81,7 @@ class APIException(HTTPException):
 class ServingState:
     home_players: Optional[List[Dict[str, Any]]] = None
     all_players: Optional[List[Dict[str, Any]]] = None
+    tomorrow_schedule: Optional[Dict[str, Any]] = None
     generated_at: Optional[str] = None
     game_date: Optional[str] = None
     artifacts_loaded: bool = False
@@ -78,7 +90,6 @@ class ServingState:
     last_mtime: Optional[float] = None
     current_snapshot_id: Optional[str] = None
     last_blob_check: Optional[float] = None
-
 
 
 def validate_schema(df: pd.DataFrame, artifact_name: str) -> None:
@@ -110,12 +121,154 @@ def dataframe_to_canonical_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
     """Convert a DataFrame to canonical player records with clean JSON-safe values."""
     if df.empty:
         return []
-    subset = df[CANONICAL_PLAYER_FIELDS]
+    df_copy = df.copy()
+    for col in CANONICAL_PLAYER_FIELDS:
+        if col not in df_copy.columns:
+            if col == "season_performance_bonus":
+                df_copy[col] = 0.0
+            elif col == "adjusted_predicted_rating":
+                df_copy[col] = df_copy.get("predicted_rating", 0.0)
+            elif col in ("season_game_count", "season_percentile", "season_average_rating"):
+                df_copy[col] = 0.0
+            else:
+                df_copy[col] = None
+    subset = df_copy[CANONICAL_PLAYER_FIELDS]
     records = []
     for row in subset.to_dict(orient="records"):
         clean_row = {k: clean_record_value(v) for k, v in row.items()}
         records.append(clean_row)
     return records
+
+
+def load_tomorrow_schedule(base_dir: Path) -> Optional[Dict[str, Any]]:
+    """Load and format tomorrow's schedule artifact from base_dir.
+
+    Fails closed (returns None) if:
+    - schedule_tomorrow.parquet is missing or unreadable
+    - schedule_tomorrow_metadata.json is missing or unreadable
+    - schedule status is FETCH_FAILED or UNAVAILABLE
+    - schedule date is missing, malformed, or future-dated (> tomorrow_et_date)
+    - row count and metadata games_count mismatch
+    - empty schedule without explicit OFF_DAY status
+    """
+    parquet_path = base_dir / "schedule_tomorrow.parquet"
+    meta_path = base_dir / "schedule_tomorrow_metadata.json"
+
+    if not parquet_path.exists() or not meta_path.exists():
+        return None
+
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        if not isinstance(meta, dict):
+            logger.warning("schedule_tomorrow_metadata.json is not a valid JSON dict")
+            return None
+    except Exception as e:
+        logger.warning("Failed reading schedule_tomorrow_metadata.json: %s", e)
+        return None
+
+    meta_status = meta.get("status")
+    if meta_status in ("FETCH_FAILED", "UNAVAILABLE"):
+        logger.warning("Schedule metadata status is %s; artifact marked unavailable", meta_status)
+        return None
+
+    schedule_date_raw = meta.get("schedule_date")
+    if not schedule_date_raw or not isinstance(schedule_date_raw, str):
+        logger.warning("Missing or non-string schedule_date in metadata")
+        return None
+
+    try:
+        schedule_date = datetime.strptime(schedule_date_raw[:10], "%Y-%m-%d").date().strftime("%Y-%m-%d")
+    except ValueError:
+        logger.warning("Malformed schedule_date in metadata: %s", schedule_date_raw)
+        return None
+
+    try:
+        df = pd.read_parquet(parquet_path)
+    except Exception as e:
+        logger.warning("Failed to read schedule_tomorrow.parquet: %s", e)
+        return None
+
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    tomorrow_et_date = (now_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Future-dated artifacts are invalid/unavailable
+    if schedule_date > tomorrow_et_date:
+        logger.warning("Future-dated schedule detected (%s > %s); unavailable", schedule_date, tomorrow_et_date)
+        return None
+
+    is_stale = meta.get("is_stale", False) or (schedule_date < tomorrow_et_date)
+    row_count = len(df)
+    meta_games_count = meta.get("games_count")
+
+    if is_stale:
+        status = "STALE"
+    else:
+        # Enforce consistency between Parquet row count and metadata
+        if meta_games_count is None or meta_games_count != row_count:
+            logger.warning(
+                "Schedule row count mismatch: parquet has %d rows, metadata reports %s",
+                row_count,
+                meta_games_count,
+            )
+            return None
+
+        if row_count == 0:
+            if meta_status != "OFF_DAY" or meta.get("games_scheduled") is not False:
+                logger.warning("Empty schedule rejected: metadata does not establish OFF_DAY")
+                return None
+            status = "OFF_DAY"
+        else:
+            if meta_status != "CONFIRMED" or meta.get("games_scheduled") is not True:
+                logger.warning("Schedule with games rejected: metadata does not establish CONFIRMED")
+                return None
+            status = "CONFIRMED"
+
+    matchups = []
+    team_ids = set()
+    for _, row in df.iterrows():
+        try:
+            home_id = int(row.get("home_team_id", 0))
+        except (ValueError, TypeError):
+            home_id = 0
+        try:
+            away_id = int(row.get("away_team_id", 0))
+        except (ValueError, TypeError):
+            away_id = 0
+        if home_id:
+            team_ids.add(home_id)
+        if away_id:
+            team_ids.add(away_id)
+        matchups.append({
+            "game_id": str(row.get("game_id", "")),
+            "home_team_id": home_id,
+            "home_team_name": row.get("home_team_name"),
+            "home_team_tricode": row.get("home_team_tricode"),
+            "away_team_id": away_id,
+            "away_team_name": row.get("away_team_name"),
+            "away_team_tricode": row.get("away_team_tricode"),
+            "game_time_utc": row.get("game_time_utc"),
+            "status": row.get("status", "Scheduled"),
+            "is_postponed": bool(row.get("is_postponed", False)),
+        })
+
+    generated_at = meta.get("generated_at")
+    if not generated_at:
+        try:
+            mtime = os.path.getmtime(parquet_path)
+            generated_at = datetime.fromtimestamp(mtime, timezone.utc).isoformat()
+        except Exception:
+            generated_at = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "schedule_date": schedule_date,
+        "generated_at": generated_at,
+        "status": status,
+        "games_scheduled": len(matchups) > 0 and status == "CONFIRMED",
+        "games_count": len(matchups),
+        "matchups": matchups,
+        "team_ids": sorted(list(team_ids)),
+    }
 
 
 def load_snapshot_state(
@@ -205,6 +358,8 @@ def load_snapshot_state(
             state.game_date = str(valid_dates.iloc[0])
         else:
             state.game_date = None
+
+    state.tomorrow_schedule = load_tomorrow_schedule(all_path.parent)
 
     state.artifacts_loaded = True
     logger.info(
@@ -304,6 +459,7 @@ def reload_serving_state_if_stale(app: Any) -> bool:
                         app.state.serving_state = new_state
                         app.state.home_players = new_state.home_players
                         app.state.all_players = new_state.all_players
+                        app.state.tomorrow_schedule = new_state.tomorrow_schedule
                         app.state.generated_at = new_state.generated_at
                         app.state.game_date = new_state.game_date
                         app.state.current_snapshot_id = new_state.current_snapshot_id
@@ -344,6 +500,7 @@ def reload_serving_state_if_stale(app: Any) -> bool:
         app.state.serving_state = new_state
         app.state.home_players = new_state.home_players
         app.state.all_players = new_state.all_players
+        app.state.tomorrow_schedule = new_state.tomorrow_schedule
         app.state.generated_at = new_state.generated_at
         app.state.game_date = new_state.game_date
         app.state.artifacts_loaded = True

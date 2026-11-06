@@ -44,6 +44,11 @@ def make_test_df(num_rows=2, **overrides):
         "opponentId": [1610612738.0] * num_rows,
         "opponentName": ["Celtics"] * num_rows,
         "headshot": ["https://cdn.nba.com/headshots/test.png"] * num_rows,
+        "season_game_count": [10] * num_rows,
+        "season_average_rating": [5.2] * num_rows,
+        "season_percentile": [60.0] * num_rows,
+        "season_performance_bonus": [1.5] * num_rows,
+        "adjusted_predicted_rating": [12.0] * num_rows,
     }
     data.update(overrides)
     return pd.DataFrame(data)

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from api.config import Settings, get_settings
 from api.loader import APIException, load_serving_state
-from api.routers import health, players
+from api.routers import health, players, schedule
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
     state = load_serving_state(settings)
     app.state.home_players = state.home_players
     app.state.all_players = state.all_players
+    app.state.tomorrow_schedule = state.tomorrow_schedule
     app.state.generated_at = state.generated_at
     app.state.game_date = state.game_date
     app.state.artifacts_loaded = state.artifacts_loaded
@@ -54,6 +55,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.home_players = None
     app.state.all_players = None
+    app.state.tomorrow_schedule = None
     app.state.generated_at = None
     app.state.game_date = None
     app.state.artifacts_loaded = False
@@ -83,6 +85,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # Register routers
     app.include_router(health.router)
     app.include_router(players.router)
+    app.include_router(schedule.router)
 
     # Optional static file serving for unified frontend/backend deployment
     if resolved_settings.static_dir and resolved_settings.static_dir.is_dir():

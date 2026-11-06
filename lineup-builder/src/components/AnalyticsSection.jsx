@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import NbaLogo from './NbaLogo';
 import StatusBadge from './StatusBadge';
+import LineupActionButton from './LineupActionButton';
 import { getTeamInfo } from '../constants/teams';
 
 /**
@@ -23,7 +24,12 @@ import { getTeamInfo } from '../constants/teams';
  * 3. Team Benchmark Comparison (Horizontal bar comparison of team average and top-5 core rating)
  * 4. Recent Rating Momentum Data Table (Searchable, sortable, status-aware)
  */
-export default function AnalyticsSection({ allPlayers, onDetail }) {
+export default function AnalyticsSection({
+  allPlayers,
+  onDetail,
+  slots = [],
+  onToggleLineup,
+}) {
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [tableSearchQuery, setTableSearchQuery] = useState('');
@@ -338,6 +344,15 @@ export default function AnalyticsSection({ allPlayers, onDetail }) {
                   {activeSelectedPlayer.deltaVal !== null ? activeSelectedPlayer.deltaVal.toFixed(2) : '0.00'}
                 </div>
               </div>
+
+              <div className="banner-action-wrap">
+                <LineupActionButton
+                  player={activeSelectedPlayer}
+                  slots={slots}
+                  onToggle={onToggleLineup}
+                  size="normal"
+                />
+              </div>
             </div>
           )}
 
@@ -499,6 +514,14 @@ export default function AnalyticsSection({ allPlayers, onDetail }) {
                         +{p.deltaVal?.toFixed(2)}
                       </div>
                     </div>
+                    <div className="mover-action-wrap" onClick={e => e.stopPropagation()}>
+                      <LineupActionButton
+                        player={p}
+                        slots={slots}
+                        onToggle={onToggleLineup}
+                        size="mini"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -529,6 +552,14 @@ export default function AnalyticsSection({ allPlayers, onDetail }) {
                         <ArrowDownRight size={12} />
                         {p.deltaVal?.toFixed(2)}
                       </div>
+                    </div>
+                    <div className="mover-action-wrap" onClick={e => e.stopPropagation()}>
+                      <LineupActionButton
+                        player={p}
+                        slots={slots}
+                        onToggle={onToggleLineup}
+                        size="mini"
+                      />
                     </div>
                   </div>
                 ))}
@@ -640,6 +671,9 @@ export default function AnalyticsSection({ allPlayers, onDetail }) {
                 <th onClick={() => handleTableSort('delta')} className="sortable-th text-right">
                   Change {tableSortField === 'delta' ? (tableSortAsc ? '▲' : '▼') : ''}
                 </th>
+                <th className="text-center" style={{ width: 100 }}>
+                  Starting Five
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -699,6 +733,14 @@ export default function AnalyticsSection({ allPlayers, onDetail }) {
                       ) : (
                         <span className="text-muted">—</span>
                       )}
+                    </td>
+                    <td className="text-center" onClick={e => e.stopPropagation()}>
+                      <LineupActionButton
+                        player={p}
+                        slots={slots}
+                        onToggle={onToggleLineup}
+                        size="compact"
+                      />
                     </td>
                   </tr>
                 );

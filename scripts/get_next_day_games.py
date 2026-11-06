@@ -372,6 +372,188 @@ def select_upcoming_slate(
     return pd.DataFrame(columns=empty_cols)
 
 
+TEAM_ID_TO_NAME = {
+    1610612737: "Hawks", 1610612738: "Celtics", 1610612739: "Cavaliers",
+    1610612740: "Pelicans", 1610612741: "Bulls", 1610612742: "Mavericks",
+    1610612743: "Nuggets", 1610612744: "Warriors", 1610612745: "Rockets",
+    1610612746: "Clippers", 1610612747: "Lakers", 1610612748: "Heat",
+    1610612749: "Bucks", 1610612750: "Timberwolves", 1610612751: "Nets",
+    1610612752: "Knicks", 1610612753: "Magic", 1610612754: "Pacers",
+    1610612755: "76ers", 1610612756: "Suns", 1610612757: "Blazers",
+    1610612758: "Kings", 1610612759: "Spurs", 1610612760: "Thunder",
+    1610612761: "Raptors", 1610612762: "Jazz", 1610612763: "Grizzlies",
+    1610612764: "Wizards", 1610612765: "Pistons", 1610612766: "Hornets"
+}
+
+SCHEDULE_COLUMNS = [
+    "game_id",
+    "game_date",
+    "schedule_date",
+    "home_team_id",
+    "home_team_name",
+    "away_team_id",
+    "away_team_name",
+    "home_team_tricode",
+    "away_team_tricode",
+    "status",
+    "game_status",
+    "game_time_utc",
+    "is_postponed",
+    "generated_at",
+]
+
+
+def get_tomorrow_schedule(
+    reference_time: Optional[datetime] = None,
+    schedule_fetcher: Optional[Callable[[str], List[Dict[str, Any]]]] = None,
+    output_path: str = "data/schedule_tomorrow.parquet",
+    metadata_path: str = "data/schedule_tomorrow_metadata.json",
+) -> str:
+    """
+    Discovers and persists official NBA schedule for tomorrow's calendar date in America/New_York.
+
+    Guarantees:
+    - Timezone: America/New_York target calendar date (tomorrowET = todayET + 1 day).
+    - Dedicated artifact: data/schedule_tomorrow.parquet.
+    - Completely decoupled from today's active fantasy prediction slate.
+    - Distinguishes:
+        * CONFIRMED: Valid upcoming matchups found for tomorrow.
+        * OFF_DAY: NBA off-day (verified 0 games scheduled).
+        * FETCH_FAILED: Network / upstream API error (never masked as an off-day).
+        * STALE: Cached schedule from an older calendar date.
+    - Saves metadata companion data/schedule_tomorrow_metadata.json atomically.
+    """
+    fetcher = schedule_fetcher or default_nba_scoreboard_fetcher
+
+    if reference_time is None:
+        ref_utc = datetime.now(timezone.utc)
+    else:
+        if reference_time.tzinfo is None:
+            ref_utc = reference_time.replace(tzinfo=TZ_ET).astimezone(timezone.utc)
+        else:
+            ref_utc = reference_time.astimezone(timezone.utc)
+
+    ref_et = ref_utc.astimezone(TZ_ET)
+    tomorrow_et_date = (ref_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    logger.info("Computing tomorrow's schedule for NBA date: %s (Reference ET: %s)",
+                tomorrow_et_date, ref_et.strftime("%Y-%m-%d %H:%M:%S"))
+
+    fetch_failed = False
+    raw_games = []
+    try:
+        raw_games = fetcher(tomorrow_et_date)
+    except Exception as e:
+        logger.error("Failed to fetch schedule for %s: %s", tomorrow_et_date, e)
+        fetch_failed = True
+
+    if fetch_failed:
+        # Check if an existing schedule is available locally
+        if os.path.exists(output_path):
+            try:
+                cached_df = pd.read_parquet(output_path)
+                cached_date = None
+                if not cached_df.empty and "schedule_date" in cached_df.columns:
+                    cached_date = str(cached_df["schedule_date"].iloc[0])[:10]
+                is_stale = cached_date != tomorrow_et_date
+                meta = {
+                    "status": "STALE" if is_stale else "FETCH_FAILED",
+                    "schedule_date": cached_date or tomorrow_et_date,
+                    "target_date": tomorrow_et_date,
+                    "generated_at": ref_utc.isoformat(),
+                    "games_scheduled": len(cached_df) > 0,
+                    "games_count": len(cached_df),
+                    "is_stale": is_stale,
+                    "error": "Upstream schedule fetch failed.",
+                }
+                with open(f"{metadata_path}.tmp", "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+                os.replace(f"{metadata_path}.tmp", metadata_path)
+                return output_path
+            except Exception:
+                pass
+
+        # Write failed metadata without creating false empty schedule
+        meta = {
+            "status": "FETCH_FAILED",
+            "schedule_date": tomorrow_et_date,
+            "target_date": tomorrow_et_date,
+            "generated_at": ref_utc.isoformat(),
+            "games_scheduled": False,
+            "games_count": 0,
+            "is_stale": True,
+            "error": "Upstream schedule fetch failed and no cached data exists.",
+        }
+        os.makedirs(os.path.dirname(metadata_path) or ".", exist_ok=True)
+        with open(f"{metadata_path}.tmp", "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        os.replace(f"{metadata_path}.tmp", metadata_path)
+        raise RuntimeError(f"Schedule retrieval failed for {tomorrow_et_date}")
+
+    # Process games into clean schema
+    records = []
+    for g in raw_games:
+        time_meta = parse_game_timestamps(g, default_nba_date=tomorrow_et_date)
+        home_team = g.get("homeTeam", {})
+        away_team = g.get("awayTeam", {})
+        home_id = int(home_team.get("teamId", 0))
+        away_id = int(away_team.get("teamId", 0))
+        home_name = home_team.get("teamName") or TEAM_ID_TO_NAME.get(home_id, "Unknown")
+        away_name = away_team.get("teamName") or TEAM_ID_TO_NAME.get(away_id, "Unknown")
+        status_text = str(g.get("gameStatusText", "")).strip()
+        is_ppd = "PPD" in status_text.upper() or "POSTPONED" in status_text.upper()
+        game_status = int(g.get("gameStatus", 1))
+
+        records.append({
+            "game_id": str(g.get("gameId", "")),
+            "game_date": tomorrow_et_date,
+            "schedule_date": tomorrow_et_date,
+            "home_team_id": home_id,
+            "home_team_name": home_name,
+            "away_team_id": away_id,
+            "away_team_name": away_name,
+            "home_team_tricode": home_team.get("teamTricode", ""),
+            "away_team_tricode": away_team.get("teamTricode", ""),
+            "status": status_text or "Scheduled",
+            "game_status": game_status,
+            "game_time_utc": time_meta["game_time_utc"],
+            "is_postponed": is_ppd,
+            "generated_at": ref_utc.isoformat(),
+        })
+
+    schedule_df = pd.DataFrame(records, columns=SCHEDULE_COLUMNS)
+
+    has_games = len(records) > 0
+    status = "CONFIRMED" if has_games else "OFF_DAY"
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(metadata_path) or ".", exist_ok=True)
+
+    # Atomic write for schedule_tomorrow.parquet
+    tmp_path = f"{output_path}.tmp"
+    schedule_df.to_parquet(tmp_path, index=False)
+    os.replace(tmp_path, output_path)
+
+    # Write companion metadata
+    meta = {
+        "status": status,
+        "schedule_date": tomorrow_et_date,
+        "target_date": tomorrow_et_date,
+        "generated_at": ref_utc.isoformat(),
+        "games_scheduled": has_games,
+        "games_count": len(records),
+        "is_stale": False,
+        "error": None,
+    }
+    tmp_meta = f"{metadata_path}.tmp"
+    with open(tmp_meta, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+    os.replace(tmp_meta, metadata_path)
+
+    logger.info("Saved tomorrow's schedule to %s (%d games, status: %s)", output_path, len(records), status)
+    return output_path
+
+
 def get_next_day_games(
     reference_time: Optional[datetime] = None,
     schedule_fetcher: Optional[Callable[[str], List[Dict[str, Any]]]] = None,

@@ -96,7 +96,7 @@ def setup_serving_data(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from zoneinfo import ZoneInfo
     now_ny = datetime.now(ZoneInfo("America/New_York"))
     today_ny = now_ny.strftime("%Y-%m-%d")
@@ -114,6 +114,37 @@ def setup_serving_data(tmp_path):
 
     df_all.to_parquet(data_dir / "frontend_all.parquet", index=False)
     df_home.to_parquet(data_dir / "frontend_home.parquet", index=False)
+
+    tomorrow_ny = (now_ny + timedelta(days=1)).strftime("%Y-%m-%d")
+    sched_record = {
+        "game_id": "0022400999",
+        "game_date": tomorrow_ny,
+        "schedule_date": tomorrow_ny,
+        "home_team_id": 1610612738,
+        "home_team_name": "Boston Celtics",
+        "away_team_id": 1610612747,
+        "away_team_name": "Los Angeles Lakers",
+        "home_team_tricode": "BOS",
+        "away_team_tricode": "LAL",
+        "status": "Scheduled",
+        "game_status": 1,
+        "game_time_utc": f"{tomorrow_ny}T23:30:00+00:00",
+        "is_postponed": False,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    df_sched = pd.DataFrame([sched_record])
+    df_sched.to_parquet(data_dir / "schedule_tomorrow.parquet", index=False)
+    with open(data_dir / "schedule_tomorrow_metadata.json", "w", encoding="utf-8") as f:
+        json.dump({
+            "status": "CONFIRMED",
+            "schedule_date": tomorrow_ny,
+            "target_date": tomorrow_ny,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "games_scheduled": True,
+            "games_count": 1,
+            "is_stale": False,
+            "error": None,
+        }, f)
 
     return data_dir
 

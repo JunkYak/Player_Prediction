@@ -1,14 +1,27 @@
-import { User, Plus } from 'lucide-react';
+import { User } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import NbaLogo from './NbaLogo';
+import LineupActionButton from './LineupActionButton';
 
 // Player card used across Draft Lineup, Top Players, and Teams views
-export default function PlayerCard({ player, onAdd, onDetail, showNotPlayed = false }) {
+export default function PlayerCard({
+  player,
+  onAdd,
+  onDetail,
+  showNotPlayed = false,
+  slots = [],
+  onToggleLineup,
+}) {
   if (!player) return null;
 
   const rawRating = player.predicted_rating;
   const hasValidRating = typeof rawRating === 'number' && !isNaN(rawRating);
   const formattedRating = hasValidRating ? rawRating.toFixed(2) : 'N/A';
+  const bonus = Number(player.season_performance_bonus) || 0;
+  const hasBonus = bonus > 0;
+  const adjRating = typeof player.adjusted_predicted_rating === 'number'
+    ? player.adjusted_predicted_rating
+    : (hasValidRating ? rawRating * (1 + bonus) : 0);
   const isOut = player.status === 'Out';
   const name = player.playerName || 'Unknown Player';
   const team = player.teamName || '—';
@@ -56,18 +69,38 @@ export default function PlayerCard({ player, onAdd, onDetail, showNotPlayed = fa
 
       <div className="player-card-bottom">
         <div className="player-rating-block">
-          <div className="player-rating-label">Predicted</div>
-          <div className="player-rating-value">
-            {showNotPlayed && !hasValidRating ? 'N/A' : formattedRating}
+          <div className="player-rating-label">
+            {hasBonus ? 'Adj (Base)' : 'Predicted'}
           </div>
+          <div className="player-rating-value">
+            {hasBonus ? (
+              <span title={`Base Rating: ${formattedRating} • Season Bonus: +${bonus.toFixed(1)}x`}>
+                {adjRating.toFixed(2)}{' '}
+                <span style={{ fontSize: '11px', color: '#888', fontWeight: 400 }}>
+                  ({formattedRating})
+                </span>
+              </span>
+            ) : (
+              showNotPlayed && !hasValidRating ? 'N/A' : formattedRating
+            )}
+          </div>
+          {hasBonus && (
+            <div
+              className="player-bonus-badge"
+              title={`Season Performance Multiplier: +${bonus.toFixed(1)}x`}
+              style={{ fontSize: '10px', color: '#10b981', fontWeight: 600, marginTop: 2 }}
+            >
+              +{bonus.toFixed(1)}x Bonus
+            </div>
+          )}
         </div>
 
         <div className="player-card-actions">
-          {!isOut && onAdd && (
-            <button className="add-btn" onClick={() => onAdd(player)} title="Add to lineup">
-              <Plus size={16} />
-            </button>
-          )}
+          <LineupActionButton
+            player={player}
+            slots={slots}
+            onToggle={onToggleLineup || onAdd}
+          />
         </div>
       </div>
     </div>

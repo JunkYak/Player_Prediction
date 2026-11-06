@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { X, User, TrendingUp, TrendingDown, Minus, Calendar, Shield, Activity, Info } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import NbaLogo from './NbaLogo';
+import LineupActionButton from './LineupActionButton';
 import { getTeamInfo } from '../constants/teams';
 
 /**
@@ -11,7 +12,13 @@ import { getTeamInfo } from '../constants/teams';
  * verified rolling form trajectory, matchup context, and momentum deltas.
  * Strictly adheres to data integrity: never fabricates artificial game logs.
  */
-export default function PlayerDetailModal({ player, gameDate, onClose }) {
+export default function PlayerDetailModal({
+  player,
+  gameDate,
+  onClose,
+  slots = [],
+  onToggleLineup,
+}) {
   // Support closing with Escape key and lock background scroll
   useEffect(() => {
     function handleKeyDown(e) {
@@ -54,6 +61,15 @@ export default function PlayerDetailModal({ player, gameDate, onClose }) {
   const last7 = typeof player.last7_avg === 'number' && !isNaN(player.last7_avg)
     ? player.last7_avg
     : null;
+
+  // Season Performance Multiplier metrics
+  const seasonGameCount = typeof player.season_game_count === 'number' ? player.season_game_count : 0;
+  const seasonAvg = typeof player.season_average_rating === 'number' ? player.season_average_rating : null;
+  const seasonPct = typeof player.season_percentile === 'number' ? player.season_percentile : null;
+  const seasonBonus = Number(player.season_performance_bonus) || 0.0;
+  const adjRating = typeof player.adjusted_predicted_rating === 'number'
+    ? player.adjusted_predicted_rating
+    : (predRating !== null ? predRating * (1 + seasonBonus) : null);
 
   // Calculated momentum deltas
   const deltaLastGame = predRating !== null && lastGame !== null ? predRating - lastGame : null;
@@ -106,14 +122,22 @@ export default function PlayerDetailModal({ player, gameDate, onClose }) {
             <span className="modal-title" id="player-modal-title">Player Intel</span>
             <span className="intel-badge">Performance Dossier</span>
           </div>
-          <button
-            type="button"
-            className="modal-close"
-            onClick={onClose}
-            aria-label="Close modal"
-          >
-            <X size={18} />
-          </button>
+          <div className="modal-header-actions">
+            <LineupActionButton
+              player={player}
+              slots={slots}
+              onToggle={onToggleLineup}
+              size="normal"
+            />
+            <button
+              type="button"
+              className="modal-close"
+              onClick={onClose}
+              aria-label="Close modal"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* ── 1. PLAYER IDENTITY HEADER ───────────────────────────────── */}
@@ -223,6 +247,49 @@ export default function PlayerDetailModal({ player, gameDate, onClose }) {
               {last7 !== null ? last7.toFixed(2) : '—'}
             </div>
             <div className="stat-card-sublabel">Multi-game baseline</div>
+          </div>
+        </div>
+
+        {/* Season Performance Multiplier Section */}
+        <div className="intel-section-title" style={{ marginTop: 18 }}>
+          Season Performance Multiplier (Current Season)
+        </div>
+        <div className="detail-stats-grid">
+          <div className="detail-stat-card stat-card-highlight">
+            <div className="detail-stat-label">Season Bonus Multiplier</div>
+            <div
+              className="detail-stat-value"
+              style={{ color: seasonBonus > 0 ? '#10b981' : 'var(--text-primary)' }}
+            >
+              +{seasonBonus.toFixed(1)}x
+            </div>
+            <div className="stat-card-sublabel">Added to Starting Five slot</div>
+          </div>
+
+          <div className="detail-stat-card">
+            <div className="detail-stat-label">Season Avg Rating</div>
+            <div className="detail-stat-value">
+              {seasonAvg !== null ? seasonAvg.toFixed(2) : '—'}
+            </div>
+            <div className="stat-card-sublabel">From {seasonGameCount} completed games</div>
+          </div>
+
+          <div className="detail-stat-card">
+            <div className="detail-stat-label">League Percentile</div>
+            <div className="detail-stat-value">
+              {seasonPct !== null ? `${seasonPct.toFixed(1)}%` : '—'}
+            </div>
+            <div className="stat-card-sublabel">
+              {seasonGameCount >= 3 ? 'Qualified (≥ 3 games)' : 'Excluded (< 3 games)'}
+            </div>
+          </div>
+
+          <div className="detail-stat-card">
+            <div className="detail-stat-label">Adjusted Rating</div>
+            <div className="detail-stat-value text-accent">
+              {adjRating !== null ? adjRating.toFixed(2) : '—'}
+            </div>
+            <div className="stat-card-sublabel">Base × (1 + Bonus)</div>
           </div>
         </div>
 

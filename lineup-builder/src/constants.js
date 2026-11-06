@@ -2,8 +2,22 @@
 export const SLOT_MULTIPLIERS = [2.0, 1.8, 1.6, 1.4, 1.2];
 
 /**
+ * Calculates the combined effective multiplier for a player in a specific slot.
+ * effective_multiplier = slot_multiplier + season_performance_bonus
+ *
+ * @param {Object|null} player - The drafted player object (or null if empty)
+ * @param {number} slotIndex - Index of the slot (0 to 4)
+ * @returns {number} Combined effective multiplier
+ */
+export function getEffectiveMultiplier(player, slotIndex) {
+  const baseSlot = SLOT_MULTIPLIERS[slotIndex] ?? 1.0;
+  const bonus = Number(player?.season_performance_bonus) || 0.0;
+  return Number((baseSlot + bonus).toFixed(2));
+}
+
+/**
  * Calculates the projected score contribution for a player in a specific slot.
- * projected_slot_value = predicted_rating * slot_multiplier
+ * projected_slot_value = predicted_rating * (slot_multiplier + season_performance_bonus)
  *
  * @param {Object|null} player - The drafted player object (or null if empty)
  * @param {number} slotIndex - Index of the slot (0 to 4)
@@ -13,8 +27,10 @@ export function getSlotProjectedValue(player, slotIndex) {
   if (!player || typeof player.predicted_rating !== 'number') {
     return 0;
   }
-  const multiplier = SLOT_MULTIPLIERS[slotIndex] ?? 1.0;
-  return player.predicted_rating * multiplier;
+  const baseSlot = SLOT_MULTIPLIERS[slotIndex] ?? 1.0;
+  const bonus = Number(player?.season_performance_bonus) || 0.0;
+  const effectiveMultiplier = baseSlot + bonus;
+  return player.predicted_rating * effectiveMultiplier;
 }
 
 /**

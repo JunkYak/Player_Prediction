@@ -276,6 +276,11 @@ class TestFastAPIDynamicReload:
             "opponentId": 1610612748,
             "opponentName": "Heat",
             "headshot": "",
+            "season_game_count": 10,
+            "season_average_rating": 90.0,
+            "season_percentile": 95.0,
+            "season_performance_bonus": 0.0,
+            "adjusted_predicted_rating": 92.5,
         }
         df_all = pd.DataFrame([initial_player])
         df_home = pd.DataFrame([initial_player])
@@ -339,6 +344,11 @@ class TestFastAPIDynamicReload:
             "opponentId": 1610612748,
             "opponentName": "Heat",
             "headshot": "",
+            "season_game_count": 10,
+            "season_average_rating": 90.0,
+            "season_percentile": 95.0,
+            "season_performance_bonus": 0.0,
+            "adjusted_predicted_rating": 92.5,
         }
         pd.DataFrame([valid_player]).to_parquet(settings.frontend_all_path)
         pd.DataFrame([valid_player]).to_parquet(settings.frontend_home_path)

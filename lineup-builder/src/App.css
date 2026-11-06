@@ -2661,3 +2661,608 @@
     font-size: 9.5px;
   }
 }
+
+/* ==========================================================================
+   FEATURE 1, 2 & 3: LINEUP ACTION BUTTON, SEARCH, AND TEAM FILTERS
+   ========================================================================== */
+
+/* ── Universal Lineup Action Button ─────────────────────────────────────── */
+.lineup-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.lineup-action-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.lineup-action-btn:hover:not(:disabled) .btn-icon {
+  stroke-width: 2.5;
+}
+
+/* Button Sizes */
+.lineup-action-btn.size-normal {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 11px;
+}
+
+.lineup-action-btn.size-compact {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 10px;
+  gap: 4px;
+}
+
+.lineup-action-btn.size-mini {
+  height: 22px;
+  padding: 0 6px;
+  font-size: 9.5px;
+  gap: 3px;
+}
+
+/* Button State: Added */
+.lineup-action-btn.is-added {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.45);
+  color: #4ade80;
+}
+
+.lineup-action-btn.is-added:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #f87171;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+}
+
+/* Button State: Full Lineup */
+.lineup-action-btn.is-full {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: #222;
+  color: #666;
+  opacity: 0.75;
+}
+
+.lineup-action-btn.is-full:hover {
+  background: rgba(255, 107, 0, 0.08);
+  border-color: rgba(255, 107, 0, 0.3);
+  color: #aaa;
+  box-shadow: none;
+}
+
+/* Button State: Out / Inactive */
+.lineup-action-btn.is-out {
+  background: transparent;
+  border-color: #252525;
+  color: #555;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Modal header actions wrap */
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Navigation pill for lineup count */
+.lineup-count-pill {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(255, 107, 0, 0.18);
+  color: var(--accent);
+  border: 1px solid rgba(255, 107, 0, 0.4);
+}
+
+.lineup-count-pill.pill-complete {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+/* Mobile tab badge */
+.mobile-tab-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-tab-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  background: var(--accent);
+  color: #000;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ── Toast Notification System ──────────────────────────────────────────── */
+.unreal-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(18, 18, 18, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-hover);
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.1);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  max-width: 420px;
+  animation: toastSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  flex: 1;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+.toast-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px;
+  margin-left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+
+.toast-close-btn:hover {
+  color: var(--text-primary);
+}
+
+.unreal-toast-success {
+  border-left: 3px solid #22c55e;
+}
+.unreal-toast-success .toast-icon {
+  color: #22c55e;
+}
+
+.unreal-toast-warning {
+  border-left: 3px solid #f97316;
+}
+.unreal-toast-warning .toast-icon {
+  color: #f97316;
+}
+
+.unreal-toast-error {
+  border-left: 3px solid #ef4444;
+}
+.unreal-toast-error .toast-icon {
+  color: #ef4444;
+}
+
+.unreal-toast-info {
+  border-left: 3px solid var(--accent);
+}
+.unreal-toast-info .toast-icon {
+  color: var(--accent);
+}
+
+/* ── Top Players Search Toolbar ─────────────────────────────────────────── */
+.players-search-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.players-search-box {
+  position: relative;
+  flex: 1;
+  min-width: 260px;
+  max-width: 460px;
+  display: flex;
+  align-items: center;
+}
+
+.players-search-box .search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.players-search-input {
+  width: 100%;
+  height: 38px;
+  background: #141414;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 34px 0 36px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.players-search-input::placeholder {
+  color: #555;
+}
+
+.players-search-input:focus {
+  outline: none;
+  background: #181818;
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-dim);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border-radius: 2px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.search-clear-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.search-status-tag {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+
+/* Empty Search State */
+.search-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 50px 20px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  background: rgba(17, 17, 17, 0.4);
+  border-radius: 4px;
+  margin-top: 10px;
+}
+
+.search-empty-icon {
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+
+.search-empty-title {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.search-empty-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 380px;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+.clear-search-action-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clear-search-action-btn:hover {
+  background: var(--accent);
+  color: #000;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* ── Teams Toolbar & Playing Tomorrow Filter ────────────────────────────── */
+.teams-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.teams-search-box {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 360px;
+  display: flex;
+  align-items: center;
+}
+
+.teams-search-box .search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.teams-search-input {
+  width: 100%;
+  height: 38px;
+  background: #141414;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 34px 0 36px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.teams-search-input::placeholder {
+  color: #555;
+}
+
+.teams-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-dim);
+}
+
+.teams-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.team-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
+  background: #141414;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.team-filter-btn:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  background: #181818;
+}
+
+.team-filter-btn.active {
+  background: rgba(255, 107, 0, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-dim);
+  font-weight: 600;
+}
+
+.team-filter-btn .filter-icon {
+  color: inherit;
+}
+
+.filter-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #000;
+}
+
+/* Matchups Banner */
+.scheduled-matchups-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 18px;
+  background: rgba(255, 107, 0, 0.06);
+  border: 1px solid rgba(255, 107, 0, 0.2);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
+.matchup-banner-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.matchup-banner-list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.matchup-pill {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 107, 0, 0.3);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* Team Card Top Meta with Tomorrow Tag */
+.team-card-top-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.team-tomorrow-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(255, 107, 0, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(255, 107, 0, 0.35);
+  text-transform: uppercase;
+}
+
+.team-card.has-game-tomorrow {
+  border-color: rgba(255, 107, 0, 0.25);
+}
+
+.team-card.has-game-tomorrow:hover {
+  border-color: var(--accent);
+}
+
+.team-matchup-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(255, 107, 0, 0.1);
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 107, 0, 0.25);
+}
+
+/* Analytics section action wrap */
+.banner-action-wrap {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 14px;
+}
+
+.mover-action-wrap {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+@media (max-width: 640px) {
+  .unreal-toast {
+    bottom: 74px;
+    left: 16px;
+    right: 16px;
+    max-width: none;
+  }
+
+  .players-search-toolbar,
+  .teams-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .players-search-box,
+  .teams-search-box {
+    max-width: none;
+  }
+
+  .banner-action-wrap {
+    width: 100%;
+    margin-left: 0;
+    padding-left: 0;
+    margin-top: 10px;
+    justify-content: flex-end;
+  }
+}

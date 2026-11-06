@@ -30,9 +30,10 @@ from scripts.add_game_dates import add_game_dates
 from scripts.build_features import build_features
 from scripts.train_model import train_model
 from scripts.roster_provider import refresh_current_rosters
-from scripts.get_next_day_games import get_next_day_games
+from scripts.get_next_day_games import get_next_day_games, get_tomorrow_schedule
 from scripts.predict_ratings import predict_ratings
 from scripts.apply_injury_status import apply_injury_status
+from scripts.compute_season_multipliers import compute_season_multipliers
 from scripts.build_frontend_dataset import build_frontend_dataset
 from scripts.team_rankings import build_team_rankings
 
@@ -100,8 +101,10 @@ def run_full_pipeline(skip_fetch: bool = False, skip_train: bool = False, export
 
     run_step("Refresh Current Rosters", refresh_current_rosters)
     run_step("Get Next Day Games", get_next_day_games)
+    run_step("Get Tomorrow Schedule", get_tomorrow_schedule)
     run_step("Predict Ratings", predict_ratings)
     run_step("Apply Injury Status", apply_injury_status)
+    run_step("Compute Season Multipliers", lambda: compute_season_multipliers())
     run_step("Build Frontend Dataset", build_frontend_dataset)
     if export_json:
         run_step("Generate Frontend JSON", generate_frontend_json)
@@ -141,8 +144,10 @@ def run_prediction_pipeline(export_json: bool = False, publish_azure: bool = Fal
 
     run_step("Refresh Current Rosters", refresh_current_rosters)
     run_step("Get Next Day Games", get_next_day_games)
+    run_step("Get Tomorrow Schedule", get_tomorrow_schedule)
     run_step("Predict Ratings", predict_ratings)
     run_step("Apply Injury Status", apply_injury_status)
+    run_step("Compute Season Multipliers", lambda: compute_season_multipliers())
     run_step("Build Frontend Dataset", build_frontend_dataset)
     if export_json:
         run_step("Generate Frontend JSON", generate_frontend_json)

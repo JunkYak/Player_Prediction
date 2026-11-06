@@ -78,3 +78,47 @@ export async function fetchTeams() {
     players,
   };
 }
+
+/**
+ * Fetch tomorrow's NBA game schedule.
+ * Maps to GET /api/v1/schedule/tomorrow
+ *
+ * returns {
+ *   schedule_date: string|null,
+ *   generated_at: string|null,
+ *   status: string,
+ *   games_scheduled: boolean,
+ *   games_count: number,
+ *   matchups: Array<object>,
+ *   team_ids: Array<number>
+ * }
+ */
+export async function fetchTomorrowSchedule() {
+  const url = `${API_BASE_URL}/api/v1/schedule/tomorrow`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    let errorDetail = `Failed to fetch tomorrow schedule (HTTP ${response.status})`;
+    try {
+      const errorJson = await response.json();
+      if (errorJson.detail) {
+        errorDetail = errorJson.detail;
+      }
+    } catch {
+      // response was not JSON
+    }
+    throw new Error(errorDetail);
+  }
+  const data = await response.json();
+  if (!data || typeof data !== 'object') {
+    throw new Error('Malformed API response: expected JSON object from /api/v1/schedule/tomorrow');
+  }
+  return {
+    schedule_date: data.schedule_date || null,
+    generated_at: data.generated_at || null,
+    status: data.status || 'UNAVAILABLE',
+    games_scheduled: Boolean(data.games_scheduled),
+    games_count: typeof data.games_count === 'number' ? data.games_count : 0,
+    matchups: Array.isArray(data.matchups) ? data.matchups : [],
+    team_ids: Array.isArray(data.team_ids) ? data.team_ids : [],
+  };
+}

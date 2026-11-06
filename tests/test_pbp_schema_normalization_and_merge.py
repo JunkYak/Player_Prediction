@@ -244,12 +244,18 @@ class TestPolicyAFailClosedSafety:
         data_dir.mkdir()
 
         # Create dummy frontend parquet files
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        now_ny = datetime.now(ZoneInfo("America/New_York"))
+        today_ny = now_ny.strftime("%Y-%m-%d")
+        yesterday_ny = (now_ny - timedelta(days=1)).strftime("%Y-%m-%d")
+
         from api.loader import REQUIRED_COLUMNS as API_COLS
         dummy_record = {col: "val" for col in API_COLS}
         dummy_record["rating"] = 20.0
         dummy_record["predicted_rating"] = 21.0
-        dummy_record["game_date"] = "2026-10-27"
-        dummy_record["last_game_date"] = "2026-10-26"
+        dummy_record["game_date"] = today_ny
+        dummy_record["last_game_date"] = yesterday_ny
         dummy_df = pd.DataFrame([dummy_record])
         dummy_df.to_parquet(data_dir / "frontend_all.parquet", index=False)
         dummy_df.to_parquet(data_dir / "frontend_home.parquet", index=False)

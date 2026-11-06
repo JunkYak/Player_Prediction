@@ -12,7 +12,11 @@ export default function Slot({
   onDetail,
 }) {
   const slotNum = index + 1;
-  const multiplierText = `${multiplier.toFixed(1)}x`;
+  const baseSlotMultiplier = multiplier;
+  const seasonBonus = Number(player?.season_performance_bonus) || 0.0;
+  const effectiveMultiplier = baseSlotMultiplier + seasonBonus;
+  const multiplierText = `${effectiveMultiplier.toFixed(1)}x`;
+  const baseMultiplierText = `${baseSlotMultiplier.toFixed(1)}x`;
 
   return (
     <div
@@ -20,14 +24,16 @@ export default function Slot({
       onClick={onClick}
       title={
         player
-          ? `${player.playerName} (Slot ${slotNum} • ${multiplierText}) — Click to replace`
-          : `Slot ${slotNum} • ${multiplierText} — Click to assign`
+          ? `${player.playerName} (Slot ${slotNum} • Base ${baseMultiplierText} + Bonus +${seasonBonus.toFixed(1)}x = ${multiplierText}) — Click to replace`
+          : `Slot ${slotNum} • ${baseMultiplierText} — Click to assign`
       }
     >
       {/* Slot Header with Multiplier Badge and Info Button */}
       <div className="slot-header-tag">
         <span className="slot-number">SLOT {slotNum}</span>
-        <span className="slot-multiplier-badge">{multiplierText}</span>
+        <span className="slot-multiplier-badge" title={player && seasonBonus > 0 ? `Base: ${baseMultiplierText} + Season Bonus: +${seasonBonus.toFixed(1)}x = ${multiplierText}` : `Slot Multiplier: ${baseMultiplierText}`}>
+          {player && seasonBonus > 0 ? `${multiplierText}` : baseMultiplierText}
+        </span>
 
         {player && onDetail && (
           <button
@@ -125,7 +131,12 @@ export default function Slot({
                     : '—'}
                 </span>
               </div>
-              <span className="slot-score-math">× {multiplierText} =</span>
+              <span
+                className="slot-score-math"
+                title={`Base ${baseMultiplierText} + Season Bonus +${seasonBonus.toFixed(1)}x = ${multiplierText}`}
+              >
+                × {multiplierText} =
+              </span>
               <div className="slot-projected-val" title="Projected Slot Score">
                 <span className="label">Proj</span>
                 <span className="val">
@@ -135,6 +146,23 @@ export default function Slot({
                 </span>
               </div>
             </div>
+            {seasonBonus > 0 && (
+              <div
+                className="slot-bonus-tag"
+                title={`Season Performance Multiplier: +${seasonBonus.toFixed(1)}x bonus added to slot multiplier`}
+                style={{
+                  fontSize: '10px',
+                  color: '#10b981',
+                  fontWeight: 600,
+                  marginTop: 3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                }}
+              >
+                <span>+{seasonBonus.toFixed(1)}x Season Bonus</span>
+              </div>
+            )}
           </>
         ) : (
           <div className="slot-empty-label">

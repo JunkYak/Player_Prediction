@@ -16,7 +16,7 @@ import json
 import hashlib
 import io
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -216,6 +216,38 @@ def test_publish_and_download_serving_snapshot_staging_flow(tmp_path, sample_ser
     data_dir.mkdir()
     df_all.to_parquet(data_dir / "frontend_all.parquet")
     df_home.to_parquet(data_dir / "frontend_home.parquet")
+
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    df_sched = pd.DataFrame([{
+        "game_id": "0022400999",
+        "game_date": tomorrow_et,
+        "schedule_date": tomorrow_et,
+        "home_team_id": 1610612738,
+        "home_team_name": "Boston Celtics",
+        "away_team_id": 1610612747,
+        "away_team_name": "Los Angeles Lakers",
+        "home_team_tricode": "BOS",
+        "away_team_tricode": "LAL",
+        "status": "Scheduled",
+        "game_status": 1,
+        "game_time_utc": f"{tomorrow_et}T23:30:00+00:00",
+        "is_postponed": False,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }])
+    df_sched.to_parquet(data_dir / "schedule_tomorrow.parquet", index=False)
+    with open(data_dir / "schedule_tomorrow_metadata.json", "w", encoding="utf-8") as f:
+        json.dump({
+            "status": "CONFIRMED",
+            "schedule_date": tomorrow_et,
+            "target_date": tomorrow_et,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "games_scheduled": True,
+            "games_count": 1,
+            "is_stale": False,
+            "error": None,
+        }, f)
+
     with open(data_dir / "ingestion_metadata.json", "w", encoding="utf-8") as f:
         json.dump({
             "status": "SUCCESS",
@@ -304,6 +336,17 @@ def test_download_second_artifact_failure_preserves_serving_state(tmp_path, samp
                 "size_bytes": 100,
                 "row_count": 1,
             },
+            "schedule_tomorrow.parquet": {
+                "blob_path": "snapshots/snap_broken_pair/schedule_tomorrow.parquet",
+                "sha256": "hash_sched",
+                "size_bytes": 100,
+                "row_count": 1,
+            },
+            "schedule_tomorrow_metadata.json": {
+                "blob_path": "snapshots/snap_broken_pair/schedule_tomorrow_metadata.json",
+                "sha256": "hash_sched_meta",
+                "size_bytes": 100,
+            },
         },
     }
 
@@ -375,6 +418,17 @@ def test_download_second_artifact_checksum_mismatch_preserves_state(tmp_path, sa
                 "sha256": "EXPECTED_VALID_HASH_12345",
                 "size_bytes": 100,
                 "row_count": 1,
+            },
+            "schedule_tomorrow.parquet": {
+                "blob_path": "snapshots/snap_corrupt_home/schedule_tomorrow.parquet",
+                "sha256": "hash_sched",
+                "size_bytes": 100,
+                "row_count": 1,
+            },
+            "schedule_tomorrow_metadata.json": {
+                "blob_path": "snapshots/snap_corrupt_home/schedule_tomorrow_metadata.json",
+                "sha256": "hash_sched_meta",
+                "size_bytes": 100,
             },
         },
     }
@@ -900,6 +954,38 @@ def test_serving_publication_failure_leaves_previous_manifest_intact(tmp_path, s
     data_dir.mkdir()
     df_all.to_parquet(data_dir / "frontend_all.parquet")
     df_home.to_parquet(data_dir / "frontend_home.parquet")
+
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    df_sched = pd.DataFrame([{
+        "game_id": "0022400999",
+        "game_date": tomorrow_et,
+        "schedule_date": tomorrow_et,
+        "home_team_id": 1610612738,
+        "home_team_name": "Boston Celtics",
+        "away_team_id": 1610612747,
+        "away_team_name": "Los Angeles Lakers",
+        "home_team_tricode": "BOS",
+        "away_team_tricode": "LAL",
+        "status": "Scheduled",
+        "game_status": 1,
+        "game_time_utc": f"{tomorrow_et}T23:30:00+00:00",
+        "is_postponed": False,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }])
+    df_sched.to_parquet(data_dir / "schedule_tomorrow.parquet", index=False)
+    with open(data_dir / "schedule_tomorrow_metadata.json", "w", encoding="utf-8") as f:
+        json.dump({
+            "status": "CONFIRMED",
+            "schedule_date": tomorrow_et,
+            "target_date": tomorrow_et,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "games_scheduled": True,
+            "games_count": 1,
+            "is_stale": False,
+            "error": None,
+        }, f)
+
     with open(data_dir / "ingestion_metadata.json", "w", encoding="utf-8") as f:
         json.dump({
             "status": "SUCCESS",
