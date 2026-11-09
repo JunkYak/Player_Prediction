@@ -4,6 +4,7 @@ import StatusBadge from './StatusBadge';
 import NbaLogo from './NbaLogo';
 import LineupActionButton from './LineupActionButton';
 import { getTeamInfo } from '../constants/teams';
+import { getOpponentFromMatchups } from '../utils/schedule';
 
 /**
  * PlayerDetailModal
@@ -18,6 +19,7 @@ export default function PlayerDetailModal({
   onClose,
   slots = [],
   onToggleLineup,
+  tomorrowSchedule = null,
 }) {
   // Support closing with Escape key and lock background scroll
   useEffect(() => {
@@ -44,7 +46,10 @@ export default function PlayerDetailModal({
   const teamInfo = getTeamInfo(teamId, teamName);
   const headshot = player.headshot || '';
   const status = player.status || 'Active';
-  const opponentName = player.opponentName && player.opponentName !== '—' ? player.opponentName : null;
+  const fallbackOpp = tomorrowSchedule?.matchups ? getOpponentFromMatchups(teamId, tomorrowSchedule.matchups) : null;
+  const opponentName = (player.opponentName && player.opponentName !== '—' && player.opponentName !== '')
+    ? player.opponentName
+    : fallbackOpp;
   const position = player.position || null;
   const jersey = player.jerseyNumber || player.jersey || null;
 
@@ -63,13 +68,19 @@ export default function PlayerDetailModal({
     : null;
 
   // Season Performance Multiplier metrics
-  const seasonGameCount = typeof player.season_game_count === 'number' ? player.season_game_count : 0;
-  const seasonAvg = typeof player.season_average_rating === 'number' ? player.season_average_rating : null;
+  const seasonGameCount = typeof player.season_game_count === 'number'
+    ? player.season_game_count
+    : (typeof player.season_games_played === 'number' ? player.season_games_played : 0);
+  const seasonAvg = typeof player.season_average_rating === 'number'
+    ? player.season_average_rating
+    : (typeof player.season_avg_rating === 'number' ? player.season_avg_rating : null);
   const seasonPct = typeof player.season_percentile === 'number' ? player.season_percentile : null;
   const seasonBonus = Number(player.season_performance_bonus) || 0.0;
-  const adjRating = typeof player.adjusted_predicted_rating === 'number'
-    ? player.adjusted_predicted_rating
-    : (predRating !== null ? predRating * (1 + seasonBonus) : null);
+  const rankingScore = typeof player.ranking_score === 'number'
+    ? player.ranking_score
+    : (typeof player.adjusted_predicted_rating === 'number'
+        ? player.adjusted_predicted_rating
+        : (predRating !== null ? predRating * (1 + seasonBonus) : null));
 
   // Calculated momentum deltas
   const deltaLastGame = predRating !== null && lastGame !== null ? predRating - lastGame : null;
@@ -285,12 +296,20 @@ export default function PlayerDetailModal({
           </div>
 
           <div className="detail-stat-card">
-            <div className="detail-stat-label">Adjusted Rating</div>
+            <div className="detail-stat-label">Top Players Ranking Score</div>
             <div className="detail-stat-value text-accent">
-              {adjRating !== null ? adjRating.toFixed(2) : '—'}
+              {rankingScore !== null ? rankingScore.toFixed(2) : '—'}
             </div>
-            <div className="stat-card-sublabel">Base × (1 + Bonus)</div>
+            <div className="stat-card-sublabel">Predicted × (1 + Bonus)</div>
           </div>
+        </div>
+
+        {/* Ranking Score Clarification Notice */}
+        <div className="forecast-disclaimer" style={{ marginTop: 10 }}>
+          <Info size={12} className="disclaimer-icon" />
+          <span>
+            The Top Players Ranking Score is exclusively a sorting metric for draft ordering. It does not alter or replace the Random Forest model predicted rating ({predRating !== null ? predRating.toFixed(2) : '—'}). In Starting Five lineups, the season bonus is added to the slot multiplier.
+          </span>
         </div>
 
         {/* Forecast Non-Guarantee Notice */}

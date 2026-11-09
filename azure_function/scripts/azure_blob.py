@@ -47,7 +47,26 @@ except (ImportError, ModuleNotFoundError):
         "last_game_id", "last_game_date", "game_date", "last_game",
         "last3_avg", "last5_avg", "last7_avg", "predicted_rating",
         "status", "injury_reason",
+        "season_game_count", "season_average_rating", "season_percentile",
+        "season_performance_bonus", "adjusted_predicted_rating",
     ]
+
+SCHEDULE_REQUIRED_COLUMNS = [
+    "game_id",
+    "game_date",
+    "schedule_date",
+    "home_team_id",
+    "home_team_name",
+    "away_team_id",
+    "away_team_name",
+    "home_team_tricode",
+    "away_team_tricode",
+    "status",
+    "game_status",
+    "game_time_utc",
+    "is_postponed",
+    "generated_at",
+]
 
 logger = logging.getLogger("propredict.azure_blob")
 logging.basicConfig(
@@ -231,6 +250,122 @@ def validate_serving_parquet(filepath: str, name: str, allow_zero_rows: bool = F
     }
 
 
+def validate_schedule_artifact(
+    parquet_path: str,
+    meta_path: str,
+    enforce_tomorrow_date: bool = True,
+) -> Dict[str, Any]:
+    """
+    Validate schedule_tomorrow Parquet file and companion metadata JSON.
+    Guarantees:
+    - Files exist and are non-empty.
+    - Parquet header magic bytes 'PAR1'.
+    - Schema contains required columns.
+    - Metadata is valid JSON and not marked FETCH_FAILED.
+    - Metadata status is CONFIRMED (with rows > 0) or OFF_DAY (with rows == 0).
+    - If enforce_tomorrow_date is True: Target date matches tomorrow ET.
+    - Consistency between metadata games_count and Parquet row count.
+    Raises ValueError if any check fails.
+    """
+    if not os.path.exists(parquet_path):
+        raise ValueError(f"Schedule Parquet file not found: {parquet_path}")
+    if not os.path.exists(meta_path):
+        raise ValueError(f"Schedule metadata file not found: {meta_path}")
+
+    size_bytes = os.path.getsize(parquet_path)
+    if size_bytes == 0:
+        raise ValueError(f"Schedule Parquet file is empty (0 bytes): {parquet_path}")
+
+    meta_size_bytes = os.path.getsize(meta_path)
+    if meta_size_bytes == 0:
+        raise ValueError(f"Schedule metadata file is empty (0 bytes): {meta_path}")
+
+    # Check Parquet magic header
+    with open(parquet_path, "rb") as f:
+        header = f.read(4)
+        if header != b"PAR1":
+            raise ValueError(
+                f"Schedule file is not a valid Parquet binary (header: {header!r})."
+            )
+
+    # Validate schema
+    try:
+        parquet_file = pq.ParquetFile(parquet_path)
+        schema_cols = parquet_file.schema.names
+    except Exception as e:
+        raise ValueError(f"Failed to read Parquet metadata for schedule: {e}") from e
+
+    missing = [c for c in SCHEDULE_REQUIRED_COLUMNS if c not in schema_cols]
+    if missing:
+        raise ValueError(f"Schedule Parquet missing required columns: {missing}")
+
+    try:
+        df = pd.read_parquet(parquet_path)
+    except Exception as e:
+        raise ValueError(f"Failed to load schedule into DataFrame: {e}") from e
+
+    row_count = len(df)
+
+    # Validate metadata JSON
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        if not isinstance(meta, dict):
+            raise ValueError("Schedule metadata must be a JSON object dictionary.")
+    except Exception as e:
+        if isinstance(e, ValueError):
+            raise
+        raise ValueError(f"Failed to parse schedule metadata: {e}") from e
+
+    meta_status = meta.get("status")
+    if meta_status == "FETCH_FAILED":
+        raise ValueError("Schedule artifact is marked FETCH_FAILED; publication blocked.")
+    if meta_status not in ("CONFIRMED", "OFF_DAY"):
+        raise ValueError(f"Invalid schedule status '{meta_status}'; expected 'CONFIRMED' or 'OFF_DAY'.")
+
+    # Date check
+    sched_date = meta.get("schedule_date") or meta.get("target_date")
+    if not sched_date or not isinstance(sched_date, str):
+        raise ValueError("Schedule metadata missing valid 'schedule_date'.")
+
+    sched_date_norm = sched_date[:10]
+    if enforce_tomorrow_date:
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        tomorrow_et_date = (now_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+        if sched_date_norm != tomorrow_et_date:
+            raise ValueError(
+                f"Schedule target date mismatch: expected tomorrow ET ({tomorrow_et_date}), got {sched_date_norm}."
+            )
+
+    # Consistency checks between metadata and parquet
+    meta_games_count = meta.get("games_count")
+    if meta_games_count is None or meta_games_count != row_count:
+        raise ValueError(
+            f"Schedule row count mismatch: parquet has {row_count} rows, metadata reports {meta_games_count}."
+        )
+
+    if row_count == 0:
+        if meta_status != "OFF_DAY" or meta.get("games_scheduled") is not False:
+            raise ValueError("Empty schedule Parquet must have status 'OFF_DAY' and games_scheduled=False in metadata.")
+    else:
+        if meta_status != "CONFIRMED" or meta.get("games_scheduled") is not True:
+            raise ValueError("Non-empty schedule Parquet must have status 'CONFIRMED' and games_scheduled=True in metadata.")
+
+    sha256 = compute_sha256(parquet_path)
+    meta_sha256 = compute_sha256(meta_path)
+
+    return {
+        "parquet_path": parquet_path,
+        "meta_path": meta_path,
+        "sha256": sha256,
+        "meta_sha256": meta_sha256,
+        "size_bytes": size_bytes,
+        "meta_size_bytes": meta_size_bytes,
+        "row_count": row_count,
+        "metadata": meta,
+    }
+
+
 def validate_artifacts(data_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Pre-publication verification of both historical play-by-play and serving datasets.
@@ -241,6 +376,8 @@ def validate_artifacts(data_dir: Optional[str] = None) -> Dict[str, Any]:
     pbp_path = data_path / CANONICAL_HISTORY_BLOB
     all_path = data_path / "frontend_all.parquet"
     home_path = data_path / "frontend_home.parquet"
+    tomorrow_path = data_path / "schedule_tomorrow.parquet"
+    sched_meta_path = data_path / "schedule_tomorrow_metadata.json"
 
     logger.info("Performing pre-publication validation of pipeline artifacts in '%s'...", data_path)
 
@@ -276,18 +413,26 @@ def validate_artifacts(data_dir: Optional[str] = None) -> Dict[str, Any]:
     meta_all = validate_serving_parquet(str(all_path), "frontend_all.parquet", allow_zero_rows=False)
     meta_home = validate_serving_parquet(str(home_path), "frontend_home.parquet", allow_zero_rows=True)
 
+    meta_sched = None
+    if tomorrow_path.exists() or sched_meta_path.exists():
+        meta_sched = validate_schedule_artifact(str(tomorrow_path), str(sched_meta_path), enforce_tomorrow_date=True)
+
     logger.info(
-        "Artifact validation passed: PBP (%d rows, %d games), frontend_all (%d rows), frontend_home (%d rows).",
+        "Artifact validation passed: PBP (%d rows, %d games), frontend_all (%d rows), frontend_home (%d rows)%s.",
         meta_pbp["row_count"],
         meta_pbp["unique_games"],
         meta_all["row_count"],
         meta_home["row_count"],
+        f", schedule ({meta_sched['row_count']} rows)" if meta_sched else "",
     )
-    return {
+    res = {
         "pbp": meta_pbp,
         "frontend_all": meta_all,
         "frontend_home": meta_home,
     }
+    if meta_sched:
+        res["schedule_tomorrow"] = meta_sched
+    return res
 
 
 # ==============================================================================
@@ -560,6 +705,8 @@ def publish_serving_snapshot(
 
     all_path = data_path / "frontend_all.parquet"
     home_path = data_path / "frontend_home.parquet"
+    tomorrow_path = data_path / "schedule_tomorrow.parquet"
+    sched_meta_path = data_path / "schedule_tomorrow_metadata.json"
 
     # 1. Validate both serving files
     meta_all = validate_serving_parquet(str(all_path), "frontend_all.parquet", allow_zero_rows=False)
@@ -573,7 +720,10 @@ def publish_serving_snapshot(
     is_fresh = bool(ingestion_meta.get("is_fresh", False))
     freshness_status = "FRESH" if (ingestion_meta.get("status") in ["SUCCESS", "UP_TO_DATE", "VERIFIED_CURRENT"] and is_fresh) else "DEGRADED"
 
-    # 3. Build unique snapshot ID
+    # 3. Mandatory schedule artifact and metadata validation (fail closed before any upload)
+    meta_sched = validate_schedule_artifact(str(tomorrow_path), str(sched_meta_path), enforce_tomorrow_date=True)
+
+    # 4. Build unique snapshot ID
     timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     sha_suffix = (git_sha or os.environ.get("GITHUB_SHA", uuid.uuid4().hex))[:8]
     snapshot_id = f"snap_{timestamp_str}_{sha_suffix}"
@@ -612,18 +762,31 @@ def publish_serving_snapshot(
                 "size_bytes": meta_home["size_bytes"],
                 "row_count": meta_home["row_count"],
             },
+            "schedule_tomorrow.parquet": {
+                "blob_path": f"{snapshot_prefix}/schedule_tomorrow.parquet",
+                "sha256": meta_sched["sha256"],
+                "size_bytes": meta_sched["size_bytes"],
+                "row_count": meta_sched["row_count"],
+            },
+            "schedule_tomorrow_metadata.json": {
+                "blob_path": f"{snapshot_prefix}/schedule_tomorrow_metadata.json",
+                "sha256": meta_sched["meta_sha256"],
+                "size_bytes": meta_sched["meta_size_bytes"],
+            },
         },
+        "schedule_metadata": meta_sched["metadata"],
         "validation": {
             "status": "VALID",
             "frontend_all_rows": meta_all["row_count"],
             "frontend_home_rows": meta_home["row_count"],
+            "schedule_tomorrow_rows": meta_sched["row_count"],
         },
     }
 
     service_client = get_blob_service_client(account)
     container_client = service_client.get_container_client(container)
 
-    # 3. Upload snapshot files under snapshots/<snapshot_id>/
+    # 5. Upload snapshot files under snapshots/<snapshot_id>/
     logger.info("Uploading snapshot '%s' artifacts to container '%s'...", snapshot_id, container)
     all_blob_client = container_client.get_blob_client(f"{snapshot_prefix}/frontend_all.parquet")
     with open(all_path, "rb") as f:
@@ -633,21 +796,30 @@ def publish_serving_snapshot(
     with open(home_path, "rb") as f:
         home_blob_client.upload_blob(f, overwrite=True)
 
-    # 4. Upload immutable manifest for this snapshot
+    tomorrow_blob_client = container_client.get_blob_client(f"{snapshot_prefix}/schedule_tomorrow.parquet")
+    with open(tomorrow_path, "rb") as f:
+        tomorrow_blob_client.upload_blob(f, overwrite=True)
+
+    sched_meta_blob_client = container_client.get_blob_client(f"{snapshot_prefix}/schedule_tomorrow_metadata.json")
+    with open(sched_meta_path, "rb") as f:
+        sched_meta_blob_client.upload_blob(f, overwrite=True)
+
+    # 6. Upload immutable manifest for this snapshot
     snap_manifest_client = container_client.get_blob_client(f"{snapshot_prefix}/manifest.json")
     manifest_bytes = json.dumps(manifest_data, indent=2).encode("utf-8")
     snap_manifest_client.upload_blob(manifest_bytes, overwrite=True)
 
-    # 5. Atomically update root current_manifest.json
+    # 7. Atomically update root current_manifest.json
     logger.info("Publishing canonical '%s' to point to snapshot '%s'...", DEFAULT_MANIFEST_BLOB, snapshot_id)
     current_manifest_client = container_client.get_blob_client(DEFAULT_MANIFEST_BLOB)
     current_manifest_client.upload_blob(manifest_bytes, overwrite=True)
 
     logger.info(
-        "Serving snapshot '%s' published successfully (%d all, %d slate).",
+        "Serving snapshot '%s' published successfully (%d all, %d slate, %d tomorrow games).",
         snapshot_id,
         meta_all["row_count"],
         meta_home["row_count"],
+        meta_sched["row_count"],
     )
     return manifest_data
 
@@ -702,9 +874,18 @@ def download_serving_snapshot(
     files_info = manifest.get("files", {})
     all_info = files_info.get("frontend_all.parquet")
     home_info = files_info.get("frontend_home.parquet")
+    tomorrow_info = files_info.get("schedule_tomorrow.parquet")
+    sched_meta_info = files_info.get("schedule_tomorrow_metadata.json")
 
     if not all_info or not home_info:
         raise ValueError("Manifest missing required file specifications for serving artifacts.")
+
+    # Refuse to stage manifests missing the mandatory schedule artifact
+    if not tomorrow_info:
+        raise ValueError("Manifest missing required schedule artifact 'schedule_tomorrow.parquet'.")
+
+    if not sched_meta_info and not manifest.get("schedule_metadata"):
+        raise ValueError("Manifest missing required schedule metadata.")
 
     # 1. Isolated staging directory
     staging_dir = dest_dir / f".staging_{new_snapshot_id}_{uuid.uuid4().hex[:6]}"
@@ -712,6 +893,8 @@ def download_serving_snapshot(
 
     staged_all = staging_dir / "frontend_all.parquet"
     staged_home = staging_dir / "frontend_home.parquet"
+    staged_tomorrow = staging_dir / "schedule_tomorrow.parquet"
+    staged_sched_meta = staging_dir / "schedule_tomorrow_metadata.json"
 
     try:
         # Download frontend_all.parquet into staging
@@ -724,7 +907,21 @@ def download_serving_snapshot(
         with open(staged_home, "wb") as f:
             container_client.get_blob_client(home_blob_path).download_blob().readinto(f)
 
-        # Verify SHA-256 on both staged files
+        # Download schedule_tomorrow.parquet into staging
+        tomorrow_blob_path = tomorrow_info["blob_path"]
+        with open(staged_tomorrow, "wb") as f:
+            container_client.get_blob_client(tomorrow_blob_path).download_blob().readinto(f)
+
+        # Download or extract schedule metadata into staging
+        if sched_meta_info:
+            sched_meta_blob_path = sched_meta_info["blob_path"]
+            with open(staged_sched_meta, "wb") as f:
+                container_client.get_blob_client(sched_meta_blob_path).download_blob().readinto(f)
+        else:
+            with open(staged_sched_meta, "w", encoding="utf-8") as f:
+                json.dump(manifest["schedule_metadata"], f, indent=2)
+
+        # Verify SHA-256 on staged files
         sha_all = compute_sha256(str(staged_all))
         if sha_all != all_info["sha256"]:
             raise ValueError(f"Checksum mismatch on frontend_all.parquet (got {sha_all}, expected {all_info['sha256']})")
@@ -733,9 +930,19 @@ def download_serving_snapshot(
         if sha_home != home_info["sha256"]:
             raise ValueError(f"Checksum mismatch on frontend_home.parquet (got {sha_home}, expected {home_info['sha256']})")
 
-        # Validate Parquet schemas and readability on both staged files
+        sha_tomorrow = compute_sha256(str(staged_tomorrow))
+        if sha_tomorrow != tomorrow_info["sha256"]:
+            raise ValueError(f"Checksum mismatch on schedule_tomorrow.parquet (got {sha_tomorrow}, expected {tomorrow_info['sha256']})")
+
+        if sched_meta_info and "sha256" in sched_meta_info:
+            sha_sched_meta = compute_sha256(str(staged_sched_meta))
+            if sha_sched_meta != sched_meta_info["sha256"]:
+                raise ValueError(f"Checksum mismatch on schedule_tomorrow_metadata.json (got {sha_sched_meta}, expected {sched_meta_info['sha256']})")
+
+        # Validate Parquet schemas and readability on staged files
         validate_serving_parquet(str(staged_all), "frontend_all.parquet", allow_zero_rows=False)
         validate_serving_parquet(str(staged_home), "frontend_home.parquet", allow_zero_rows=True)
+        validate_schedule_artifact(str(staged_tomorrow), str(staged_sched_meta), enforce_tomorrow_date=False)
 
         # Write immutable manifest inside staging
         with open(staging_dir / "manifest.json", "w", encoding="utf-8") as f:
@@ -759,13 +966,20 @@ def download_serving_snapshot(
             json.dump(manifest, f, indent=2)
         os.replace(tmp_manifest, local_manifest_file)
 
-        # 4. Synchronize canonical root parquet files for legacy/local tools
-        for fname in ["frontend_all.parquet", "frontend_home.parquet"]:
+        # 4. Synchronize canonical root files for legacy/local tools
+        for fname in ["frontend_all.parquet", "frontend_home.parquet", "schedule_tomorrow.parquet"]:
             src_f = final_snapshot_dir / fname
-            dst_f = dest_dir / fname
-            tmp_f = dest_dir / f"{fname}.tmp"
-            shutil.copy2(src_f, tmp_f)
-            os.replace(tmp_f, dst_f)
+            if src_f.exists():
+                dst_f = dest_dir / fname
+                tmp_f = dest_dir / f"{fname}.tmp"
+                shutil.copy2(src_f, tmp_f)
+                os.replace(tmp_f, dst_f)
+        src_meta = final_snapshot_dir / "schedule_tomorrow_metadata.json"
+        if src_meta.exists():
+            dst_meta = dest_dir / "schedule_tomorrow_metadata.json"
+            tmp_meta = dest_dir / "schedule_tomorrow_metadata.json.tmp"
+            shutil.copy2(src_meta, tmp_meta)
+            os.replace(tmp_meta, dst_meta)
 
         logger.info("Serving snapshot '%s' promoted and activated successfully.", new_snapshot_id)
         return True, new_snapshot_id, final_snapshot_dir

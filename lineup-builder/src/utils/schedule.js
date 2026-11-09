@@ -113,6 +113,17 @@ export function evaluateScheduleStatus({
     const schedGen = tomorrowSchedule.generated_at || null;
     const schedStatus = tomorrowSchedule.status || 'UNAVAILABLE';
 
+    if (schedDate && schedDate > tomorrowET) {
+      return {
+        status: 'FUTURE_SLATE',
+        targetDate: tomorrowET,
+        todayDate: todayET,
+        slateDate: schedDate,
+        generatedAt: schedGen,
+        message: `Available schedule data is for a future slate (${formatDisplayDate(schedDate)}), not tomorrow (${formatDisplayDate(tomorrowET)}).`,
+      };
+    }
+
     if (schedStatus === 'CONFIRMED' && tomorrowSchedule.games_scheduled) {
       return {
         status: 'CONFIRMED',
@@ -282,13 +293,13 @@ export function filterTeamsPlayingTomorrow({
 
   // If dedicated tomorrowSchedule is available with team_ids
   if (tomorrowSchedule && Array.isArray(tomorrowSchedule.team_ids) && tomorrowSchedule.team_ids.length > 0) {
-    const scheduledTeamIds = new Set(tomorrowSchedule.team_ids);
+    const scheduledTeamIds = new Set(tomorrowSchedule.team_ids.map(Number));
     const opponentMap = new Map();
     const matchupPairs = new Set();
 
     (tomorrowSchedule.matchups || []).forEach(m => {
-      const homeId = m.home_team_id;
-      const awayId = m.away_team_id;
+      const homeId = Number(m.home_team_id);
+      const awayId = Number(m.away_team_id);
       const homeName = m.home_team_name;
       const awayName = m.away_team_name;
 
@@ -304,7 +315,7 @@ export function filterTeamsPlayingTomorrow({
     });
 
     const qualifyingTeams = (Array.isArray(teams) ? teams : []).filter(t =>
-      t && t.teamId && scheduledTeamIds.has(t.teamId)
+      t && t.teamId && scheduledTeamIds.has(Number(t.teamId))
     );
 
     return {
@@ -397,4 +408,21 @@ export function filterTeamsPlayingTomorrow({
     count: qualifyingTeams.length,
     status: 'CONFIRMED',
   };
+}
+
+/**
+ * Resolves opponent team name for a given teamId from tomorrow's schedule matchups.
+ *
+ * @param {number|string} teamId
+ * @param {Array} matchups
+ * @returns {string|null} Opponent team name or null
+ */
+export function getOpponentFromMatchups(teamId, matchups = []) {
+  if (!teamId || !Array.isArray(matchups)) return null;
+  const tid = Number(teamId);
+  for (const m of matchups) {
+    if (Number(m.home_team_id) === tid) return m.away_team_name || null;
+    if (Number(m.away_team_id) === tid) return m.home_team_name || null;
+  }
+  return null;
 }

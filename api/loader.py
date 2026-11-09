@@ -62,9 +62,13 @@ CANONICAL_PLAYER_FIELDS = [
     "last3_avg",
     "last7_avg",
     "season_game_count",
+    "season_games_played",
     "season_average_rating",
+    "season_avg_rating",
     "season_percentile",
     "season_performance_bonus",
+    "season_multiplier_eligible",
+    "ranking_score",
     "adjusted_predicted_rating",
 ]
 
@@ -122,14 +126,35 @@ def dataframe_to_canonical_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
     if df.empty:
         return []
     df_copy = df.copy()
+
+    # Synchronize synonymous fields if one is present
+    if "season_game_count" in df_copy.columns and "season_games_played" not in df_copy.columns:
+        df_copy["season_games_played"] = df_copy["season_game_count"]
+    elif "season_games_played" in df_copy.columns and "season_game_count" not in df_copy.columns:
+        df_copy["season_game_count"] = df_copy["season_games_played"]
+
+    if "season_average_rating" in df_copy.columns and "season_avg_rating" not in df_copy.columns:
+        df_copy["season_avg_rating"] = df_copy["season_average_rating"]
+    elif "season_avg_rating" in df_copy.columns and "season_average_rating" not in df_copy.columns:
+        df_copy["season_average_rating"] = df_copy["season_avg_rating"]
+
     for col in CANONICAL_PLAYER_FIELDS:
         if col not in df_copy.columns:
             if col == "season_performance_bonus":
                 df_copy[col] = 0.0
+            elif col == "ranking_score":
+                if "adjusted_predicted_rating" in df_copy.columns:
+                    df_copy[col] = df_copy["adjusted_predicted_rating"]
+                else:
+                    pred_series = df_copy.get("predicted_rating", 0.0)
+                    bonus_series = df_copy.get("season_performance_bonus", 0.0)
+                    df_copy[col] = (pred_series * (1.0 + bonus_series)).round(2)
             elif col == "adjusted_predicted_rating":
-                df_copy[col] = df_copy.get("predicted_rating", 0.0)
-            elif col in ("season_game_count", "season_percentile", "season_average_rating"):
+                df_copy[col] = df_copy.get("ranking_score", df_copy.get("predicted_rating", 0.0))
+            elif col in ("season_game_count", "season_games_played", "season_percentile", "season_average_rating", "season_avg_rating"):
                 df_copy[col] = 0.0
+            elif col == "season_multiplier_eligible":
+                df_copy[col] = False
             else:
                 df_copy[col] = None
     subset = df_copy[CANONICAL_PLAYER_FIELDS]

@@ -346,6 +346,8 @@ export default function App() {
           {activeSection === 'players' && (
             <TopPlayersSection
               players={homeData}
+              gameDate={gameDate}
+              tomorrowSchedule={tomorrowSchedule}
               onAdd={handleAdd}
               onDetail={setDetailModal}
               slots={slots}
@@ -448,6 +450,7 @@ export default function App() {
           onClose={() => setDetailModal(null)}
           slots={slots}
           onToggleLineup={handleToggleLineup}
+          tomorrowSchedule={tomorrowSchedule}
         />
       )}
     </div>
