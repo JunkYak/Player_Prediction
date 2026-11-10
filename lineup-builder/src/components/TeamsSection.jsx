@@ -162,7 +162,7 @@ export default function TeamsSection({
                     <span className="dot-sep">•</span>
                     <span className="team-matchup-badge">
                       <Calendar size={12} style={{ marginRight: 4 }} />
-                      Tomorrow vs {opponent}
+                      Scheduled vs {opponent}
                     </span>
                   </>
                 )}
@@ -192,15 +192,15 @@ export default function TeamsSection({
   let subtitle = `${teams.length} franchises — official rosters & active performance projections`;
   if (playingTomorrowOnly) {
     if (scheduleStatus.status === 'CONFIRMED') {
-      subtitle = `${filteredTeams.length} teams with confirmed games scheduled for tomorrow (${formatDisplayDate(scheduleStatus.targetDate)})`;
+      subtitle = `${filteredTeams.length} teams with confirmed games scheduled for today (${formatDisplayDate(scheduleStatus.targetDate)})`;
     } else if (scheduleStatus.status === 'OFF_DAY') {
-      subtitle = `NBA Off-Day: No games scheduled for tomorrow (${formatDisplayDate(scheduleStatus.targetDate)})`;
+      subtitle = `NBA Off-Day: No games scheduled for today (${formatDisplayDate(scheduleStatus.targetDate)})`;
     } else if (scheduleStatus.status === 'TODAY_ACTIVE') {
-      subtitle = `Active slate is tracking today's games (${formatDisplayDate(scheduleStatus.todayDate)}) — tomorrow's schedule (${formatDisplayDate(scheduleStatus.targetDate)}) activates post-game`;
+      subtitle = `Active slate is tracking games for ${formatDisplayDate(scheduleStatus.todayDate)}`;
     } else if (scheduleStatus.status === 'STALE') {
-      subtitle = `Schedule telemetry is stale (${formatDisplayDate(scheduleStatus.slateDate)}) — tomorrow's schedule (${formatDisplayDate(scheduleStatus.targetDate)}) not yet synced`;
+      subtitle = `Schedule telemetry is stale (${formatDisplayDate(scheduleStatus.slateDate)}) — schedule for ${formatDisplayDate(scheduleStatus.targetDate)} not yet synced`;
     } else if (scheduleStatus.status === 'FUTURE_SLATE') {
-      subtitle = `Next slate is on ${formatDisplayDate(scheduleStatus.slateDate)} — no games tomorrow (${formatDisplayDate(scheduleStatus.targetDate)})`;
+      subtitle = `Next slate is on ${formatDisplayDate(scheduleStatus.slateDate)} — no games scheduled for ${formatDisplayDate(scheduleStatus.targetDate)}`;
     } else {
       subtitle = 'Schedule telemetry is currently unavailable';
     }
@@ -216,7 +216,7 @@ export default function TeamsSection({
 
       <hr className="section-divider" />
 
-      {/* ── TOOLBAR: SEARCH & PLAYING TOMORROW FILTER ─────────────────── */}
+      {/* ── TOOLBAR: SEARCH & PLAYING TODAY FILTER ───────────────────── */}
       <div className="teams-toolbar">
         {/* Search */}
         <div className="teams-search-box">
@@ -244,7 +244,7 @@ export default function TeamsSection({
           )}
         </div>
 
-        {/* Filter Button: Playing Tomorrow */}
+        {/* Filter Button: Playing Today */}
         <div className="teams-filter-group">
           <button
             type="button"
@@ -253,12 +253,12 @@ export default function TeamsSection({
             aria-pressed={playingTomorrowOnly}
             title={
               scheduleStatus.status === 'CONFIRMED'
-                ? `Filter to teams playing tomorrow (${formatDisplayDate(scheduleStatus.targetDate)})`
+                ? `Filter to teams playing today (${formatDisplayDate(scheduleStatus.targetDate)})`
                 : scheduleStatus.message
             }
           >
             <Calendar size={14} className="filter-icon" />
-            <span className="filter-label">Playing Tomorrow</span>
+            <span className="filter-label">Playing Today</span>
             {scheduleStatus.status === 'CONFIRMED' && scheduledTeamInfo.count > 0 && (
               <span className="filter-count-badge">{scheduledTeamInfo.count}</span>
             )}
@@ -271,7 +271,7 @@ export default function TeamsSection({
         <div className="scheduled-matchups-banner">
           <div className="matchup-banner-title">
             <Calendar size={14} style={{ color: 'var(--accent)' }} />
-            <span>Confirmed Matchups for Tomorrow ({formatDisplayDate(scheduleStatus.targetDate)}):</span>
+            <span>Confirmed Matchups for Today ({formatDisplayDate(scheduleStatus.targetDate)}):</span>
           </div>
           <div className="matchup-banner-list">
             {scheduledTeamInfo.matchups.map((m, idx) => (
@@ -286,7 +286,7 @@ export default function TeamsSection({
         scheduleStatus.status === 'OFF_DAY' ? (
           <div className="empty-state schedule-empty-state">
             <Calendar size={36} className="empty-icon text-muted" />
-            <div className="empty-title">NBA Off-Day: No Games Scheduled for Tomorrow</div>
+            <div className="empty-title">NBA Off-Day: No Games Scheduled for Today</div>
             <div className="empty-subtitle">
               The official NBA schedule confirms 0 games scheduled for {formatDisplayDate(scheduleStatus.targetDate)}. All 30 franchises are resting.
             </div>
@@ -301,9 +301,9 @@ export default function TeamsSection({
         ) : scheduleStatus.status === 'TODAY_ACTIVE' ? (
           <div className="empty-state schedule-empty-state">
             <Activity size={36} className="empty-icon text-muted" />
-            <div className="empty-title">Tomorrow's Schedule Not Yet Active</div>
+            <div className="empty-title">Schedule Not Yet Active</div>
             <div className="empty-subtitle">
-              The active prediction slate is tracking today's games ({formatDisplayDate(scheduleStatus.todayDate)}). Tomorrow's schedule ({formatDisplayDate(scheduleStatus.targetDate)}) will publish once today's games conclude.
+              The active prediction slate is tracking games for {formatDisplayDate(scheduleStatus.todayDate)}.
             </div>
             <button
               type="button"
@@ -318,7 +318,7 @@ export default function TeamsSection({
             <ShieldAlert size={36} className="empty-icon text-muted" />
             <div className="empty-title">Schedule Telemetry Stale</div>
             <div className="empty-subtitle">
-              The latest available snapshot is from {formatDisplayDate(scheduleStatus.slateDate)}. Tomorrow's schedule ({formatDisplayDate(scheduleStatus.targetDate)}) has not yet been synced by the ingestion pipeline.
+              The latest available snapshot is from {formatDisplayDate(scheduleStatus.slateDate)}. The schedule for {formatDisplayDate(scheduleStatus.targetDate)} has not yet been synced by the ingestion pipeline.
             </div>
             <button
               type="button"
@@ -331,9 +331,9 @@ export default function TeamsSection({
         ) : scheduleStatus.status === 'FUTURE_SLATE' ? (
           <div className="empty-state schedule-empty-state">
             <Calendar size={36} className="empty-icon text-muted" />
-            <div className="empty-title">No Games Scheduled for Tomorrow</div>
+            <div className="empty-title">No Games Scheduled for Today</div>
             <div className="empty-subtitle">
-              The next available prediction slate is scheduled for {formatDisplayDate(scheduleStatus.slateDate)}, not tomorrow ({formatDisplayDate(scheduleStatus.targetDate)}).
+              The next available prediction slate is scheduled for {formatDisplayDate(scheduleStatus.slateDate)}, not today ({formatDisplayDate(scheduleStatus.targetDate)}).
             </div>
             <button
               type="button"
@@ -348,7 +348,7 @@ export default function TeamsSection({
             <ShieldAlert size={36} className="empty-icon text-muted" />
             <div className="empty-title">Schedule Telemetry Unavailable</div>
             <div className="empty-subtitle">
-              Unable to retrieve tomorrow's schedule telemetry from the prediction service ({formatDisplayDate(scheduleStatus.targetDate)}).
+              Unable to retrieve schedule telemetry from the prediction service ({formatDisplayDate(scheduleStatus.targetDate)}).
             </div>
             <button
               type="button"
@@ -364,7 +364,7 @@ export default function TeamsSection({
           <Search size={32} className="search-empty-icon" />
           <div className="search-empty-title">No teams match "{teamSearchQuery}"</div>
           <div className="search-empty-subtitle">
-            {playingTomorrowOnly ? 'Try turning off "Playing Tomorrow" or modifying your search.' : 'Check the spelling or clear the filter.'}
+            {playingTomorrowOnly ? 'Try turning off "Playing Today" or modifying your search.' : 'Check the spelling or clear the filter.'}
           </div>
           <button
             type="button"

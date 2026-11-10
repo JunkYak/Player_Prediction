@@ -1,0 +1,39 @@
+{
+  "model_version": "model_202526_production",
+  "season_boundary": "2026-10-20",
+  "training_timestamp": "unavailable",
+  "training_provenance": {
+    "source": "2025-26 NBA historical play-by-play and boxscore archive",
+    "season": "2025-26",
+    "training_rows": 4189,
+    "unique_players": "unavailable",
+    "training_date_range": "unavailable (pre-season historical dataset prior to 2026-10-20)"
+  },
+  "validation_provenance": {
+    "evaluation_dataset": "2026-27 season holdout set (2026-11-07 to 2026-11-10)",
+    "evaluation_rows": 669,
+    "historical_preseason_validation_metrics": "unavailable",
+    "current_season_holdout_metrics": {
+      "MAE": 0.7214,
+      "R2": 0.546
+    }
+  },
+  "feature_schema": [
+    "last_game",
+    "last3_avg",
+    "last5_avg",
+    "last7_avg",
+    "games_played_before_target",
+    "expand_mean",
+    "days_since_prev_game"
+  ],
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 8,
+    "random_state": 42
+  },
+  "is_validated": true,
+  "std3_median": 0.6735899197583054,
+  "sha256": "71e19ab50e35d6bf0dbdca92599b1b3f5bcca4dc17d3c614f69b1b0727a4bf11",
+  "model_file": "rating_model.pkl"
+}

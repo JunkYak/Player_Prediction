@@ -45,7 +45,7 @@ def test_traded_player_reflects_new_team_while_preserving_history():
         "teamId": [1610612738] * 5,  # Celtics in past games
         "gameId": [f"002250000{i}" for i in range(1, 6)],
         "rating": [12.0, 14.0, 10.0, 16.0, 18.0],
-        "game_date": pd.to_datetime(["2026-03-01", "2026-03-03", "2026-03-05", "2026-03-07", "2026-03-09"]),
+        "game_date": pd.to_datetime(["2026-10-20", "2026-10-20", "2026-10-21", "2026-10-21", "2026-10-21"]),
     })
 
     roster_map = {

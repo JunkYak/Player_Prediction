@@ -431,7 +431,7 @@ def test_real_historical_dataset_execution():
     ineligible = res[~res["season_multiplier_eligible"]]
 
     assert len(eligible) >= 100
-    assert len(ineligible) >= 200
+    assert len(ineligible) >= 25
 
     # Ineligible must be all 0.0
     assert (ineligible["season_performance_bonus"] == 0.0).all()

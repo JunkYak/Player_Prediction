@@ -162,12 +162,12 @@ def test_dedicated_schedule_schema_normalization():
 def test_confirmed_schedule_with_multiple_games(sample_predictions_df, sample_multipliers_df):
     """When schedule has 2 confirmed games, exactly those 4 teams appear with correct opponents."""
     sched_df = pd.DataFrame([
-        {"home_team_id": 1610612741, "away_team_id": 1610612755, "schedule_date": "2026-11-08"},  # Bulls vs 76ers
-        {"home_team_id": 1610612738, "away_team_id": 1610612744, "schedule_date": "2026-11-08"},  # Celtics vs Warriors
+        {"home_team_id": 1610612741, "away_team_id": 1610612755, "schedule_date": "2026-11-07"},  # Bulls vs 76ers
+        {"home_team_id": 1610612738, "away_team_id": 1610612744, "schedule_date": "2026-11-07"},  # Celtics vs Warriors
     ])
     sched_meta = {
         "status": "CONFIRMED",
-        "schedule_date": "2026-11-08",
+        "schedule_date": "2026-11-07",
         "games_scheduled": True,
         "games_count": 2,
         "is_stale": False,
@@ -192,7 +192,7 @@ def test_confirmed_schedule_with_multiple_games(sample_predictions_df, sample_mu
 
         # 4 teams participating, max 3 players per team; Maxey is Out so 76ers has 1 player (VJ Edgecombe)
         assert set(df_home["teamId"].unique()) == {1610612741, 1610612755, 1610612738, 1610612744}
-        assert all(df_home["game_date"] == "2026-11-08")
+        assert all(df_home["game_date"] == "2026-11-07")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -204,7 +204,7 @@ def test_valid_confirmed_off_day(sample_predictions_df, sample_multipliers_df):
     sched_df = pd.DataFrame(columns=["home_team_id", "away_team_id", "schedule_date"])
     sched_meta = {
         "status": "OFF_DAY",
-        "schedule_date": "2026-11-08",
+        "schedule_date": "2026-11-07",
         "games_scheduled": False,
         "games_count": 0,
         "is_stale": False,
@@ -290,11 +290,11 @@ def test_exact_team_set_opponent_mapping_and_exclusion(sample_predictions_df, sa
     """
     # Tomorrow only has Bulls vs 76ers. Celtics and Warriors are resting.
     sched_df = pd.DataFrame([
-        {"home_team_id": 1610612741, "away_team_id": 1610612755, "schedule_date": "2026-11-08"},
+        {"home_team_id": 1610612741, "away_team_id": 1610612755, "schedule_date": "2026-11-07"},
     ])
     sched_meta = {
         "status": "CONFIRMED",
-        "schedule_date": "2026-11-08",
+        "schedule_date": "2026-11-07",
         "games_scheduled": True,
         "games_count": 1,
         "is_stale": False,
@@ -349,11 +349,11 @@ def test_preservation_of_ranking_score_and_starting_five_scoring(sample_predicti
         projected_slot_value = predicted_rating * effective_multiplier
     """
     sched_df = pd.DataFrame([
-        {"home_team_id": 1610612741, "away_team_id": 1610612755, "schedule_date": "2026-11-08"},
+        {"home_team_id": 1610612741, "away_team_id": 1610612755, "schedule_date": "2026-11-07"},
     ])
     sched_meta = {
         "status": "CONFIRMED",
-        "schedule_date": "2026-11-08",
+        "schedule_date": "2026-11-07",
         "games_scheduled": True,
         "games_count": 1,
         "is_stale": False,
@@ -390,3 +390,8 @@ def test_preservation_of_ranking_score_and_starting_five_scoring(sample_predicti
         assert eff_mult == 3.5
         slot_value = giddey["predicted_rating"] * eff_mult
         assert slot_value == 12.25
+
+        # Regression guard: strictly distinguish approved formula from erroneous (1 + base_mult + bonus)
+        erroneous_slot_value = giddey["predicted_rating"] * (1.0 + base_slot_mult + giddey["season_performance_bonus"])
+        assert erroneous_slot_value == 15.75
+        assert slot_value != erroneous_slot_value

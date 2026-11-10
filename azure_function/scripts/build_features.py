@@ -1,11 +1,14 @@
+from typing import Optional, Union
+from datetime import datetime
 import pandas as pd
 import os
 
 
-def build_features():
-
-    input_path = "data/player_game_ratings_with_dates.parquet"
-    output_path = "data/player_features.parquet"
+def build_features(
+    input_path: str = "data/player_game_ratings_with_dates.parquet",
+    output_path: str = "data/player_features.parquet",
+    reference_date: Optional[Union[str, datetime]] = None,
+):
 
     # ==============================
     # INPUT CHECK
@@ -27,9 +30,16 @@ def build_features():
 
     df["game_date"] = pd.to_datetime(df["game_date"])
 
-    # Enforce historical cutoff: strictly >= 2026-02-06
-    cutoff_dt = pd.to_datetime("2026-02-06")
-    df = df[df["game_date"] >= cutoff_dt].copy()
+    # Enforce current NBA season boundary: strictly on or after season start date.
+    # Season boundary resolves dynamically (October 20 rule) rather than hardcoding 2026.
+    try:
+        from scripts.compute_season_multipliers import determine_season_boundary
+    except ImportError:
+        from compute_season_multipliers import determine_season_boundary
+
+    season_start_str, _ = determine_season_boundary(df["game_date"], reference_date=reference_date)
+    season_start_dt = pd.to_datetime(season_start_str)
+    df = df[df["game_date"] >= season_start_dt].copy()
 
     pbp_path = "data/play_by_play.parquet"
     if os.path.exists(pbp_path):

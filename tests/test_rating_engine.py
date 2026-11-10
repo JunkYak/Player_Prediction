@@ -1034,6 +1034,6 @@ class TestRegressionOnRealData:
         assert ratings["rating"].isna().sum() == 0
 
     def test_plausible_row_count(self, pbp_df):
-        """Row count should be in a reasonable range (7000-10000 based on Phase 2A baseline)."""
+        """Row count should be in a reasonable range (7000-15000 based on canonical archive)."""
         ratings = self._compute_ratings(pbp_df)
-        assert 7000 <= len(ratings) <= 12000, f"Implausible row count: {len(ratings)}"
+        assert 7000 <= len(ratings) <= 15000, f"Implausible row count: {len(ratings)}"

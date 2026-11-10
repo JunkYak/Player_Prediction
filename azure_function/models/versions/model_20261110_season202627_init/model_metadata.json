@@ -1,0 +1,72 @@
+{
+  "model_version": "model_20261110_season202627_init",
+  "season_boundary": "2026-10-20",
+  "training_timestamp": "2026-11-10T13:17:41.006330+00:00",
+  "training_date_range": {
+    "start": "2026-10-21",
+    "end": "2026-11-06"
+  },
+  "test_date_range": {
+    "start": "2026-11-07",
+    "end": "2026-11-10"
+  },
+  "training_rows": 2507,
+  "testing_rows": 669,
+  "total_feature_rows": 3176,
+  "unique_players": 442,
+  "feature_schema": [
+    "last_game",
+    "last3_avg",
+    "last5_avg",
+    "last7_avg",
+    "games_played_before_target",
+    "expand_mean",
+    "days_since_prev_game"
+  ],
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 8,
+    "random_state": 42
+  },
+  "validation_metrics": {
+    "Mean Baseline": {
+      "MAE": 1.0883288681477614,
+      "R2": -0.00018538201263940124
+    },
+    "Median Baseline": {
+      "MAE": 1.0578070254110614,
+      "R2": -0.029539997485314995
+    },
+    "Last Game Baseline": {
+      "MAE": 0.8851497757847532,
+      "R2": 0.27772011392664187
+    },
+    "Last 3 Avg Baseline": {
+      "MAE": 0.7607904459392127,
+      "R2": 0.49116286952692134
+    },
+    "Last 5 Avg Baseline": {
+      "MAE": 0.7300892416542103,
+      "R2": 0.5373818032993272
+    },
+    "Last 7 Avg Baseline": {
+      "MAE": 0.7274462898426934,
+      "R2": 0.5371142882180203
+    },
+    "Linear Regression": {
+      "MAE": 0.7286787241497977,
+      "R2": 0.537065627949054
+    },
+    "Random Forest": {
+      "MAE": 0.7390097150028546,
+      "R2": 0.5157555868040931
+    }
+  },
+  "is_validated": false,
+  "std3_median": 0.5486319087197653,
+  "sha256": "198d56b00127fef28892630143da3e7b523e80275c4e03cf3393c18ac1fee03a",
+  "model_file": "rating_model.pkl",
+  "is_active": false,
+  "promotion_eligible": false,
+  "promotion_rejection_reason": "Candidate Random Forest test MAE (0.7390) underperformed Last 7 baseline (0.7274), Last 5 baseline (0.7301), Linear Regression (0.7287), and Active Champion model_202526_production (0.7214). Retained as an unpromoted, inactive candidate artifact."
+}

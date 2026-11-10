@@ -215,14 +215,14 @@ def load_tomorrow_schedule(base_dir: Path) -> Optional[Dict[str, Any]]:
         return None
 
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    tomorrow_et_date = (now_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+    target_et_date = now_et.date().strftime("%Y-%m-%d")
 
     # Future-dated artifacts are invalid/unavailable
-    if schedule_date > tomorrow_et_date:
-        logger.warning("Future-dated schedule detected (%s > %s); unavailable", schedule_date, tomorrow_et_date)
+    if schedule_date > target_et_date:
+        logger.warning("Future-dated schedule detected (%s > %s); unavailable", schedule_date, target_et_date)
         return None
 
-    is_stale = meta.get("is_stale", False) or (schedule_date < tomorrow_et_date)
+    is_stale = meta.get("is_stale", False) or (schedule_date < target_et_date)
     row_count = len(df)
     meta_games_count = meta.get("games_count")
 

@@ -21,7 +21,7 @@ export default function LineupSection({
           <div className="section-title">Draft Lineup</div>
           <div className="section-subtitle">
             {!gamesAvailable && filledCount === 0
-              ? "No games scheduled for tomorrow — draft slate opens on game day"
+              ? "No games scheduled for today — draft slate opens on game day"
               : `${filledCount} / 5 slots filled — click any slot to draft or replace a player`}
           </div>
         </div>

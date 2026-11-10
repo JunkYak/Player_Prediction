@@ -6,13 +6,13 @@ import {
   getOpponentFromMatchups,
 } from './schedule.js';
 
-test('Top Players & Schedule Alignment Suite (Phase 2.2)', async (t) => {
-  // Reference date: Saturday Nov 7, 2026 12:00 PM ET -> tomorrow is Nov 8, 2026
+test('Top Players & Schedule Alignment Suite (Phase 2.9)', async (t) => {
+  // Reference date: Saturday Nov 7, 2026 12:00 PM ET -> target date is Nov 7, 2026
   const refDateNov7 = new Date('2026-11-07T12:00:00-05:00');
 
-  await t.test('1. Confirmed tomorrow schedule with matching games returns CONFIRMED', () => {
+  await t.test('1. Confirmed schedule with matching games returns CONFIRMED', () => {
     const tomorrowSchedule = {
-      schedule_date: '2026-11-08',
+      schedule_date: '2026-11-07',
       status: 'CONFIRMED',
       games_scheduled: true,
       games_count: 2,
@@ -36,13 +36,13 @@ test('Top Players & Schedule Alignment Suite (Phase 2.2)', async (t) => {
     };
 
     const status = evaluateScheduleStatus({
-      gameDate: '2026-11-08',
+      gameDate: '2026-11-07',
       tomorrowSchedule,
       referenceDate: refDateNov7,
     });
 
     assert.equal(status.status, 'CONFIRMED');
-    assert.equal(status.targetDate, '2026-11-08');
+    assert.equal(status.targetDate, '2026-11-07');
   });
 
   await t.test('2. Stale schedule returns status STALE and distinct explanatory message', () => {
@@ -61,7 +61,7 @@ test('Top Players & Schedule Alignment Suite (Phase 2.2)', async (t) => {
     });
 
     assert.equal(status.status, 'STALE');
-    assert.equal(status.targetDate, '2026-11-08');
+    assert.equal(status.targetDate, '2026-11-07');
     assert.match(status.message, /synced/i);
   });
 
@@ -80,25 +80,25 @@ test('Top Players & Schedule Alignment Suite (Phase 2.2)', async (t) => {
     });
 
     assert.equal(status.status, 'FUTURE_SLATE');
-    assert.equal(status.targetDate, '2026-11-08');
+    assert.equal(status.targetDate, '2026-11-07');
   });
 
   await t.test('4. Valid OFF_DAY returns status OFF_DAY with 0 matchups', () => {
     const offDaySchedule = {
-      schedule_date: '2026-11-08',
+      schedule_date: '2026-11-07',
       status: 'OFF_DAY',
       games_scheduled: false,
       games_count: 0,
     };
 
     const status = evaluateScheduleStatus({
-      gameDate: '2026-11-08',
+      gameDate: '2026-11-07',
       tomorrowSchedule: offDaySchedule,
       referenceDate: refDateNov7,
     });
 
     assert.equal(status.status, 'OFF_DAY');
-    assert.equal(status.targetDate, '2026-11-08');
+    assert.equal(status.targetDate, '2026-11-07');
     assert.match(status.message, /0 confirmed matchups/i);
 
     const filtered = filterTeamsPlayingTomorrow({
@@ -126,7 +126,7 @@ test('Top Players & Schedule Alignment Suite (Phase 2.2)', async (t) => {
 
   await t.test('6. Playing Tomorrow filters exactly the confirmed teams and excludes resting teams', () => {
     const tomorrowSchedule = {
-      schedule_date: '2026-11-08',
+      schedule_date: '2026-11-07',
       status: 'CONFIRMED',
       games_scheduled: true,
       team_ids: [1610612741, 1610612755], // Bulls & 76ers only

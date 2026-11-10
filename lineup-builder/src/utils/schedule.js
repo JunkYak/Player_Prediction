@@ -105,7 +105,9 @@ export function evaluateScheduleStatus({
   tomorrowSchedule = null,
 } = {}) {
   const todayET = getTodayET(referenceDate);
-  const tomorrowET = getTomorrowET(referenceDate);
+  // Authoritative schedule target date: at 1:00 PM IST (07:30 UTC), Eastern Time is in the
+  // early morning of the same calendar date. Therefore, the target schedule date is todayET.
+  const targetET = todayET;
 
   // If dedicated tomorrowSchedule is provided
   if (tomorrowSchedule && typeof tomorrowSchedule === 'object') {
@@ -113,54 +115,54 @@ export function evaluateScheduleStatus({
     const schedGen = tomorrowSchedule.generated_at || null;
     const schedStatus = tomorrowSchedule.status || 'UNAVAILABLE';
 
-    if (schedDate && schedDate > tomorrowET) {
+    if (schedDate && schedDate > targetET) {
       return {
         status: 'FUTURE_SLATE',
-        targetDate: tomorrowET,
+        targetDate: targetET,
         todayDate: todayET,
         slateDate: schedDate,
         generatedAt: schedGen,
-        message: `Available schedule data is for a future slate (${formatDisplayDate(schedDate)}), not tomorrow (${formatDisplayDate(tomorrowET)}).`,
+        message: `Available schedule data is for a future slate (${formatDisplayDate(schedDate)}), not the target game date (${formatDisplayDate(targetET)}).`,
       };
     }
 
     if (schedStatus === 'CONFIRMED' && tomorrowSchedule.games_scheduled) {
       return {
         status: 'CONFIRMED',
-        targetDate: schedDate || tomorrowET,
+        targetDate: schedDate || targetET,
         todayDate: todayET,
         slateDate: schedDate,
         generatedAt: schedGen,
-        message: `Confirmed games scheduled for tomorrow (${formatDisplayDate(schedDate || tomorrowET)}).`,
+        message: `Confirmed games scheduled for ${formatDisplayDate(schedDate || targetET)}.`,
       };
     }
 
     if (schedStatus === 'OFF_DAY' || (schedStatus === 'CONFIRMED' && !tomorrowSchedule.games_scheduled)) {
       return {
         status: 'OFF_DAY',
-        targetDate: schedDate || tomorrowET,
+        targetDate: schedDate || targetET,
         todayDate: todayET,
         slateDate: schedDate,
         generatedAt: schedGen,
-        message: `The official NBA schedule has 0 confirmed matchups for tomorrow (${formatDisplayDate(schedDate || tomorrowET)}). All 30 franchises are resting.`,
+        message: `The official NBA schedule has 0 confirmed matchups for ${formatDisplayDate(schedDate || targetET)}. All 30 franchises are resting.`,
       };
     }
 
-    if (schedStatus === 'STALE' || (schedDate && schedDate < tomorrowET)) {
+    if (schedStatus === 'STALE' || (schedDate && schedDate < targetET)) {
       return {
         status: 'STALE',
-        targetDate: tomorrowET,
+        targetDate: targetET,
         todayDate: todayET,
         slateDate: schedDate,
         generatedAt: schedGen,
-        message: `The latest available snapshot is from ${formatDisplayDate(schedDate)}. Tomorrow's confirmed schedule (${formatDisplayDate(tomorrowET)}) has not yet been synced.`,
+        message: `The latest available snapshot is from ${formatDisplayDate(schedDate)}. The confirmed schedule for ${formatDisplayDate(targetET)} has not yet been synced.`,
       };
     }
 
     if (schedStatus === 'UNAVAILABLE' || schedStatus === 'FETCH_FAILED') {
       return {
         status: 'UNAVAILABLE',
-        targetDate: tomorrowET,
+        targetDate: targetET,
         todayDate: todayET,
         slateDate: schedDate,
         generatedAt: schedGen,
@@ -173,7 +175,7 @@ export function evaluateScheduleStatus({
   if (!gameDate && (!Array.isArray(homeData) || homeData.length === 0) && gamesScheduled === undefined) {
     return {
       status: 'UNAVAILABLE',
-      targetDate: tomorrowET,
+      targetDate: targetET,
       todayDate: todayET,
       slateDate: null,
       generatedAt: generatedAt || null,
@@ -182,62 +184,50 @@ export function evaluateScheduleStatus({
   }
 
   // Stale past date: slate date is earlier than today in ET
-  if (gameDate && gameDate < todayET) {
+  if (gameDate && gameDate < targetET) {
     return {
       status: 'STALE',
-      targetDate: tomorrowET,
+      targetDate: targetET,
       todayDate: todayET,
       slateDate: gameDate,
       generatedAt: generatedAt || null,
-      message: `The latest available snapshot is from ${formatDisplayDate(gameDate)}. Tomorrow's confirmed schedule (${formatDisplayDate(tomorrowET)}) has not yet been synced.`,
+      message: `The latest available snapshot is from ${formatDisplayDate(gameDate)}. The confirmed schedule for ${formatDisplayDate(targetET)} has not yet been synced.`,
     };
   }
 
-  // Today's active slate: games on today's ET date are still active or upcoming
-  if (gameDate === todayET) {
-    return {
-      status: 'TODAY_ACTIVE',
-      targetDate: tomorrowET,
-      todayDate: todayET,
-      slateDate: gameDate,
-      generatedAt: generatedAt || null,
-      message: `The active prediction slate is tracking today's games (${formatDisplayDate(todayET)}). Tomorrow's schedule (${formatDisplayDate(tomorrowET)}) will activate once today's slate concludes.`,
-    };
-  }
-
-  // Future slate beyond tomorrow
-  if (gameDate && gameDate > tomorrowET) {
+  // Future slate beyond target date
+  if (gameDate && gameDate > targetET) {
     return {
       status: 'FUTURE_SLATE',
-      targetDate: tomorrowET,
+      targetDate: targetET,
       todayDate: todayET,
       slateDate: gameDate,
       generatedAt: generatedAt || null,
-      message: `Available schedule data is for a future slate (${formatDisplayDate(gameDate)}), not tomorrow (${formatDisplayDate(tomorrowET)}).`,
+      message: `Available schedule data is for a future slate (${formatDisplayDate(gameDate)}), not the target game date (${formatDisplayDate(targetET)}).`,
     };
   }
 
-  // Exact match with tomorrow's date
-  if (gameDate === tomorrowET) {
+  // Exact match with target date
+  if (gameDate === targetET) {
     const hasGames = gamesScheduled !== false && Array.isArray(homeData) && homeData.length > 0;
     if (!hasGames) {
       return {
         status: 'OFF_DAY',
-        targetDate: tomorrowET,
+        targetDate: targetET,
         todayDate: todayET,
         slateDate: gameDate,
         generatedAt: generatedAt || null,
-        message: `The official NBA schedule has 0 confirmed matchups for tomorrow (${formatDisplayDate(tomorrowET)}). All 30 franchises are resting.`,
+        message: `The official NBA schedule has 0 confirmed matchups for ${formatDisplayDate(targetET)}. All 30 franchises are resting.`,
       };
     }
 
     return {
       status: 'CONFIRMED',
-      targetDate: tomorrowET,
+      targetDate: targetET,
       todayDate: todayET,
       slateDate: gameDate,
       generatedAt: generatedAt || null,
-      message: `Confirmed games scheduled for tomorrow (${formatDisplayDate(tomorrowET)}).`,
+      message: `Confirmed games scheduled for ${formatDisplayDate(targetET)}.`,
     };
   }
 
@@ -245,21 +235,21 @@ export function evaluateScheduleStatus({
   if (gameDate === null && gamesScheduled === false) {
     return {
       status: 'OFF_DAY',
-      targetDate: tomorrowET,
+      targetDate: targetET,
       todayDate: todayET,
       slateDate: null,
       generatedAt: generatedAt || null,
-      message: `The official NBA schedule confirms 0 active matchups for tomorrow (${formatDisplayDate(tomorrowET)}).`,
+      message: `The official NBA schedule confirms 0 active matchups for ${formatDisplayDate(targetET)}.`,
     };
   }
 
   return {
     status: 'UNAVAILABLE',
-    targetDate: tomorrowET,
+    targetDate: targetET,
     todayDate: todayET,
     slateDate: gameDate || null,
     generatedAt: generatedAt || null,
-    message: 'Unable to verify tomorrow schedule data.',
+    message: 'Unable to verify schedule data.',
   };
 }
 
@@ -426,3 +416,5 @@ export function getOpponentFromMatchups(teamId, matchups = []) {
   }
   return null;
 }
+
+export const filterTeamsPlayingToday = filterTeamsPlayingTomorrow;

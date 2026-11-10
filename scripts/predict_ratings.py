@@ -50,9 +50,20 @@ def construct_prediction_features(
     df_sorted = df_history.sort_values(["personId", "game_date"]).copy()
     df_sorted["game_date"] = pd.to_datetime(df_sorted["game_date"])
 
-    # Enforce historical cutoff: strictly >= 2026-02-06
-    cutoff_dt = pd.to_datetime("2026-02-06")
-    df_sorted = df_sorted[df_sorted["game_date"] >= cutoff_dt].copy()
+    # Enforce system-wide historical cutoff (data archive floor: 2026-02-06)
+    historical_cutoff = pd.to_datetime("2026-02-06")
+    df_sorted = df_sorted[df_sorted["game_date"] >= historical_cutoff].copy()
+
+    # Enforce current NBA season boundary: strictly on or after season start date.
+    # Season boundary resolves dynamically (October 20 rule) rather than hardcoding 2026.
+    try:
+        from scripts.compute_season_multipliers import determine_season_boundary
+    except ImportError:
+        from compute_season_multipliers import determine_season_boundary
+
+    season_start_str, _ = determine_season_boundary(df_sorted["game_date"], reference_date=target_date)
+    season_start_dt = pd.to_datetime(season_start_str)
+    df_sorted = df_sorted[df_sorted["game_date"] >= season_start_dt].copy()
 
     # If fga is not in history, merge from play_by_play.parquet if available
     if "fga" not in df_sorted.columns:
@@ -218,31 +229,37 @@ def predict_ratings(
 ) -> str:
 
     # ==============================
-    # CHECK FILES
+    # LOAD ACTIVE VALIDATED MODEL & METADATA
     # ==============================
 
-    if not os.path.exists(model_path):
+    model_dir = os.path.dirname(model_path) if os.path.dirname(model_path) else "models"
+    resolved_model_path = model_path
+    active_meta = {}
+
+    try:
+        from scripts.model_registry import resolve_active_model, ModelValidationError
+    except ImportError:
+        from model_registry import resolve_active_model, ModelValidationError
+
+    pointer_path = os.path.join(model_dir, "active_model.json")
+    if os.path.exists(pointer_path) or model_path in ("models/rating_model.pkl", "azure_function/models/rating_model.pkl"):
+        resolved_model_path, active_meta = resolve_active_model(base_dir=model_dir, fail_closed=True)
+        print(f"Active validated model resolved: {active_meta.get('active_version', 'unknown')} ({resolved_model_path})")
+        print(f"Active model SHA-256: {active_meta.get('sha256', '')[:12]}...")
+    elif not os.path.exists(model_path):
         raise FileNotFoundError(f"Missing model: {model_path}")
 
-    # Fallback to player_features.parquet if player_game_ratings_with_dates.parquet is missing
-    if not os.path.exists(input_path):
-        fallback_path = "data/player_features.parquet"
-        if os.path.exists(fallback_path):
-            input_path = fallback_path
-        else:
-            raise FileNotFoundError(f"Missing input file: {input_path}")
-
-    # ==============================
-    # LOAD MODEL & FEATURE METADATA
-    # ==============================
-
-    model = joblib.load(model_path)
+    model = joblib.load(resolved_model_path)
     print("Model loaded")
 
-    model_dir = os.path.dirname(model_path) if os.path.dirname(model_path) else "."
-    metadata_path = os.path.join(model_dir, "feature_metadata.json")
+    metadata_path = active_meta.get("metadata_path")
+    if metadata_path and not os.path.isabs(metadata_path):
+        metadata_path = os.path.join(model_dir, metadata_path)
+    if not metadata_path or not os.path.exists(metadata_path):
+        metadata_path = os.path.join(model_dir, "feature_metadata.json")
+
     std3_median = None
-    if os.path.exists(metadata_path):
+    if metadata_path and os.path.exists(metadata_path):
         with open(metadata_path, "r", encoding="utf-8") as f:
             metadata = json.load(f)
         std3_median = metadata.get("std3_median", None)
@@ -304,6 +321,8 @@ def predict_ratings(
     # ==============================
 
     latest["predicted_rating"] = model.predict(X)
+    latest["model_version"] = active_meta.get("active_version", "untracked")
+    latest["model_sha256"] = active_meta.get("sha256", "")
 
     # ==============================
     # SORT
@@ -354,4 +373,4 @@ def predict_ratings(
 # ==============================
 
 if __name__ == "__main__":
-    predict_ratings()
+    predict_ratings()

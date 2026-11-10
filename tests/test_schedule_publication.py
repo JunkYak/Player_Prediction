@@ -55,7 +55,7 @@ def _create_mock_schedule_df(schedule_date: str, count: int = 1) -> pd.DataFrame
 def _setup_test_serving_data(data_dir, schedule_status="CONFIRMED", schedule_date=None, games_count=1):
     now_et = datetime.now(ZoneInfo("America/New_York"))
     today_ny = now_et.strftime("%Y-%m-%d")
-    target_date = schedule_date or (now_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+    target_date = schedule_date or now_et.date().strftime("%Y-%m-%d")
 
     # Serving files with fresh slate date
     df_home = make_test_df(num_rows=2, game_date=[today_ny, today_ny])

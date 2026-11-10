@@ -434,10 +434,14 @@ def get_tomorrow_schedule(
             ref_utc = reference_time.astimezone(timezone.utc)
 
     ref_et = ref_utc.astimezone(TZ_ET)
-    tomorrow_et_date = (ref_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+    # The daily pipeline runs at 1:00 PM IST (07:30 UTC). At 1 PM IST, Eastern Time is in
+    # the early morning of the same calendar date. Therefore, the target schedule date is
+    # the current Eastern Time calendar date (today ET), not today ET + 1.
+    target_et_date = ref_et.date().strftime("%Y-%m-%d")
+    tomorrow_et_date = target_et_date
 
-    logger.info("Computing tomorrow's schedule for NBA date: %s (Reference ET: %s)",
-                tomorrow_et_date, ref_et.strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info("Computing schedule for NBA date: %s (Reference ET: %s)",
+                target_et_date, ref_et.strftime("%Y-%m-%d %H:%M:%S"))
 
     fetch_failed = False
     raw_games = []

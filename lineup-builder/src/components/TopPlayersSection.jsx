@@ -15,9 +15,24 @@ function normalizeSearchText(str) {
     .trim();
 }
 
-// SECTION 2 — TOP PLAYERS (derived from confirmed tomorrow schedule & predictions)
+/**
+ * Computes the ranking score for a player:
+ * ranking_score = round(predicted_rating * (1 + season_performance_bonus), 2)
+ */
+function computeRankingScore(p) {
+  if (typeof p?.ranking_score === 'number' && !isNaN(p.ranking_score)) {
+    return p.ranking_score;
+  }
+  const rating = Number(p?.predicted_rating) || 0;
+  const bonus = Number(p?.season_performance_bonus) || 0;
+  return Math.round(rating * (1 + bonus) * 100) / 100;
+}
+
+// SECTION 2 — TOP PLAYERS (Complete prediction pool sorted by ranking_score descending)
 export default function TopPlayersSection({
   players,
+  allPlayers,
+  homePlayers,
   gameDate = null,
   tomorrowSchedule = null,
   onAdd,
@@ -27,6 +42,7 @@ export default function TopPlayersSection({
   referenceDate = undefined,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'scheduled'
 
   // 1. Evaluate schedule status deterministically using America/New_York timezone policy
   const scheduleStatus = useMemo(() => {
@@ -38,7 +54,7 @@ export default function TopPlayersSection({
     });
   }, [gameDate, players, tomorrowSchedule, referenceDate]);
 
-  // 2. Evaluate runtime alignment between player slate and tomorrow's confirmed schedule
+  // 2. Evaluate runtime alignment between player slate and confirmed schedule
   const slateAlignment = useMemo(() => {
     const status = scheduleStatus.status;
 
@@ -47,18 +63,18 @@ export default function TopPlayersSection({
       return {
         isAligned: false,
         status: 'OFF_DAY',
-        title: 'NBA Off-Day: No Games Scheduled for Tomorrow',
+        title: 'NBA Off-Day: No Games Scheduled for Target Date',
         subtitle: `The official NBA schedule confirms 0 games scheduled for ${formatDisplayDate(scheduleStatus.targetDate)}. All 30 franchises are resting.`,
       };
     }
 
-    // B. Telemetry Stale: schedule date < tomorrowET
+    // B. Telemetry Stale: schedule date < targetET
     if (status === 'STALE') {
       return {
         isAligned: false,
         status: 'STALE',
         title: 'Schedule Telemetry Stale',
-        subtitle: `The latest available snapshot is from ${formatDisplayDate(scheduleStatus.slateDate)}. Tomorrow's confirmed schedule (${formatDisplayDate(scheduleStatus.targetDate)}) has not yet been synced by the ingestion pipeline.`,
+        subtitle: `The latest available snapshot is from ${formatDisplayDate(scheduleStatus.slateDate)}. The confirmed schedule for ${formatDisplayDate(scheduleStatus.targetDate)} has not yet been synced by the ingestion pipeline.`,
       };
     }
 
@@ -68,7 +84,7 @@ export default function TopPlayersSection({
         isAligned: false,
         status: 'UNAVAILABLE',
         title: 'Schedule Telemetry Unavailable',
-        subtitle: `Unable to retrieve tomorrow's schedule telemetry from the prediction service (${formatDisplayDate(scheduleStatus.targetDate)}).`,
+        subtitle: `Unable to retrieve schedule telemetry from the prediction service for ${formatDisplayDate(scheduleStatus.targetDate)}.`,
       };
     }
 
@@ -77,8 +93,8 @@ export default function TopPlayersSection({
       return {
         isAligned: false,
         status: 'TODAY_ACTIVE',
-        title: "Tomorrow's Schedule Not Yet Active",
-        subtitle: `The active prediction slate is tracking today's games (${formatDisplayDate(scheduleStatus.todayDate)}). Tomorrow's schedule (${formatDisplayDate(scheduleStatus.targetDate)}) will publish once today's games conclude.`,
+        title: "Target Date Schedule Not Yet Active",
+        subtitle: `The active prediction slate is tracking today's games (${formatDisplayDate(scheduleStatus.todayDate)}). The schedule for ${formatDisplayDate(scheduleStatus.targetDate)} will publish once today's games conclude.`,
       };
     }
 
@@ -87,20 +103,20 @@ export default function TopPlayersSection({
       return {
         isAligned: false,
         status: 'FUTURE_SLATE',
-        title: 'No Games Scheduled for Tomorrow',
-        subtitle: `The next available prediction slate is scheduled for ${formatDisplayDate(scheduleStatus.slateDate)}, not tomorrow (${formatDisplayDate(scheduleStatus.targetDate)}).`,
+        title: 'Future Slate Telemetry',
+        subtitle: `The next available prediction slate is scheduled for ${formatDisplayDate(scheduleStatus.slateDate)}, not the current target date (${formatDisplayDate(scheduleStatus.targetDate)}).`,
       };
     }
 
-    // F. Confirmed: Verify player slate matches tomorrow's schedule date
+    // F. Confirmed: Verify player slate matches schedule date
     if (status === 'CONFIRMED') {
       const schedDate = tomorrowSchedule?.schedule_date;
       if (gameDate && schedDate && gameDate !== schedDate) {
         return {
           isAligned: false,
           status: 'SYNCING',
-          title: "Tomorrow's Player Slate Syncing",
-          subtitle: `Active player predictions (${formatDisplayDate(gameDate)}) are not yet synchronized with tomorrow's confirmed schedule (${formatDisplayDate(schedDate)}). Awaiting pipeline sync.`,
+          title: "Player Slate Syncing",
+          subtitle: `Active player predictions (${formatDisplayDate(gameDate)}) are not yet synchronized with confirmed schedule (${formatDisplayDate(schedDate)}). Awaiting pipeline sync.`,
         };
       }
       return { isAligned: true, status: 'CONFIRMED' };
@@ -109,7 +125,7 @@ export default function TopPlayersSection({
     return { isAligned: true, status };
   }, [scheduleStatus, tomorrowSchedule, gameDate]);
 
-  // Set of confirmed team IDs to exclude unscheduled teams
+  // Set of confirmed team IDs to identify scheduled teams
   const confirmedTeamIds = useMemo(() => {
     if (tomorrowSchedule && Array.isArray(tomorrowSchedule.team_ids) && tomorrowSchedule.team_ids.length > 0) {
       return new Set(tomorrowSchedule.team_ids.map(Number));
@@ -117,42 +133,63 @@ export default function TopPlayersSection({
     return null;
   }, [tomorrowSchedule]);
 
-  // 3. Filter out OUT players and ensure players belong strictly to confirmed tomorrow teams
-  const eligiblePlayers = useMemo(() => {
-    if (!slateAlignment.isAligned) return [];
-    return (Array.isArray(players) ? players : []).filter(p => {
-      if (!p || p.status === 'Out') return false;
-      if (confirmedTeamIds && !confirmedTeamIds.has(Number(p.teamId))) return false;
-      return true;
-    });
-  }, [players, confirmedTeamIds, slateAlignment.isAligned]);
+  // 3. Expose complete available prediction pool (every player with valid prediction > 0)
+  const fullPredictionPool = useMemo(() => {
+    const source = (Array.isArray(allPlayers) && allPlayers.length > 0)
+      ? allPlayers
+      : (Array.isArray(players) ? players : []);
 
-  // 4. Sort eligible players: status_rank -> ranking_score desc -> predicted_rating desc
+    return source.filter(p => {
+      if (!p) return false;
+      const r = Number(p.predicted_rating);
+      return typeof p.predicted_rating === 'number' && !isNaN(r) && r > 0;
+    });
+  }, [allPlayers, players]);
+
+  // Scheduled count
+  const scheduledCount = useMemo(() => {
+    if (confirmedTeamIds) {
+      return fullPredictionPool.filter(p => confirmedTeamIds.has(Number(p.teamId))).length;
+    }
+    if (Array.isArray(homePlayers) && homePlayers.length > 0) {
+      return homePlayers.length;
+    }
+    return 0;
+  }, [fullPredictionPool, confirmedTeamIds, homePlayers]);
+
+  // 4. Select display pool based on activeFilter
+  const poolToDisplay = useMemo(() => {
+    if (activeFilter === 'scheduled') {
+      if (confirmedTeamIds) {
+        return fullPredictionPool.filter(p => confirmedTeamIds.has(Number(p.teamId)));
+      }
+      if (Array.isArray(homePlayers) && homePlayers.length > 0) {
+        return homePlayers;
+      }
+    }
+    return fullPredictionPool;
+  }, [fullPredictionPool, activeFilter, confirmedTeamIds, homePlayers]);
+
+  // 5. Sort players: status_rank -> ranking_score desc -> predicted_rating desc
   const sortedPlayers = useMemo(() => {
-    return eligiblePlayers.slice().sort((a, b) => {
+    return poolToDisplay.slice().sort((a, b) => {
       const aRank = typeof a.status_rank === 'number' ? a.status_rank : 5;
       const bRank = typeof b.status_rank === 'number' ? b.status_rank : 5;
       if (aRank !== bRank) return aRank - bRank;
 
-      const aScore = typeof a.ranking_score === 'number'
-        ? a.ranking_score
-        : (typeof a.adjusted_predicted_rating === 'number'
-            ? a.adjusted_predicted_rating
-            : (Number(a.predicted_rating) || 0) * (1 + (Number(a.season_performance_bonus) || 0)));
-      const bScore = typeof b.ranking_score === 'number'
-        ? b.ranking_score
-        : (typeof b.adjusted_predicted_rating === 'number'
-            ? b.adjusted_predicted_rating
-            : (Number(b.predicted_rating) || 0) * (1 + (Number(b.season_performance_bonus) || 0)));
-      if (bScore !== aScore) return bScore - aScore;
+      const aScore = computeRankingScore(a);
+      const bScore = computeRankingScore(b);
+      if (Math.abs(bScore - aScore) > 1e-6) return bScore - aScore;
 
       const aRating = typeof a.predicted_rating === 'number' ? a.predicted_rating : 0;
       const bRating = typeof b.predicted_rating === 'number' ? b.predicted_rating : 0;
-      return bRating - aRating;
-    });
-  }, [eligiblePlayers]);
+      if (Math.abs(bRating - aRating) > 1e-6) return bRating - aRating;
 
-  // 5. Filter matching search query (case-insensitive, accent-tolerant, partial-match)
+      return (a.playerName || '').localeCompare(b.playerName || '');
+    });
+  }, [poolToDisplay]);
+
+  // 6. Filter matching search query across complete pool
   const filteredPlayers = useMemo(() => {
     const q = normalizeSearchText(searchQuery);
     if (!q) return sortedPlayers;
@@ -169,14 +206,14 @@ export default function TopPlayersSection({
 
   // Header Subtitle Logic
   let subtitle;
-  if (!slateAlignment.isAligned) {
-    subtitle = slateAlignment.subtitle;
-  } else if (sortedPlayers.length === 0) {
-    subtitle = `No active players available for tomorrow's games (${formatDisplayDate(scheduleStatus.targetDate)})`;
+  if (sortedPlayers.length === 0) {
+    subtitle = `No player predictions available in the serving dataset`;
   } else if (isSearching) {
     subtitle = `Showing ${filteredPlayers.length} of ${sortedPlayers.length} players matching "${searchQuery}"`;
+  } else if (activeFilter === 'scheduled') {
+    subtitle = `${sortedPlayers.length} active players across confirmed games (${formatDisplayDate(scheduleStatus.targetDate)}) — sorted by availability & ranking score`;
   } else {
-    subtitle = `${sortedPlayers.length} active players across tomorrow's confirmed games (${formatDisplayDate(scheduleStatus.targetDate)}) — sorted by availability & ranking score`;
+    subtitle = `${sortedPlayers.length} players with valid model predictions across all 30 NBA rosters — sorted by availability & ranking score`;
   }
 
   return (
@@ -189,89 +226,130 @@ export default function TopPlayersSection({
 
       <hr className="section-divider" />
 
-      {/* ── SEARCH INPUT TOOLBAR ───────────────────────────────────── */}
-      {slateAlignment.isAligned && sortedPlayers.length > 0 && (
-        <div className="players-search-toolbar">
-          <div className="players-search-box">
-            <Search size={15} className="search-icon" aria-hidden="true" />
-            <input
-              type="text"
-              className="players-search-input"
-              placeholder="Search players by name, team, or opponent..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              aria-label="Search players by name, team, or opponent"
-              autoComplete="off"
-              spellCheck="false"
-            />
-            {isSearching && (
-              <button
-                type="button"
-                className="search-clear-btn"
-                onClick={() => setSearchQuery('')}
-                title="Clear search"
-                aria-label="Clear search text"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          {isSearching && (
-            <div className="search-status-tag">
-              <Users size={12} style={{ marginRight: 4 }} />
-              <span>{filteredPlayers.length} {filteredPlayers.length === 1 ? 'match' : 'matches'}</span>
-            </div>
+      {/* ── SCHEDULE STATUS NOTICE (Distinguishes schedule issues without hiding predictions) ── */}
+      {!slateAlignment.isAligned && (
+        <div
+          className="schedule-alert-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '10px 14px',
+            marginBottom: 16,
+            background: 'rgba(255, 107, 0, 0.08)',
+            border: '1px solid rgba(255, 107, 0, 0.25)',
+            borderRadius: 4,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+          }}
+        >
+          {slateAlignment.status === 'OFF_DAY' ? (
+            <Calendar size={20} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+          ) : slateAlignment.status === 'SYNCING' ? (
+            <Activity size={20} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+          ) : (
+            <ShieldAlert size={20} style={{ color: 'var(--accent)', flexShrink: 0 }} />
           )}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>
+              {slateAlignment.title}
+            </div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '10.5px', lineHeight: 1.4 }}>
+              {slateAlignment.subtitle}
+            </div>
+          </div>
         </div>
       )}
 
+      {/* ── FILTER TABS & SEARCH TOOLBAR ───────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+        {confirmedTeamIds && scheduledCount > 0 && (
+          <div className="players-filter-tabs" style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className={`players-filter-pill ${activeFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setActiveFilter('all')}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '4px 10px',
+                borderRadius: 3,
+                background: activeFilter === 'all' ? 'rgba(255, 107, 0, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${activeFilter === 'all' ? 'rgba(255, 107, 0, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                color: activeFilter === 'all' ? 'var(--accent)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              All Predictions ({fullPredictionPool.length})
+            </button>
+            <button
+              type="button"
+              className={`players-filter-pill ${activeFilter === 'scheduled' ? 'active' : ''}`}
+              onClick={() => setActiveFilter('scheduled')}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '4px 10px',
+                borderRadius: 3,
+                background: activeFilter === 'scheduled' ? 'rgba(255, 107, 0, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${activeFilter === 'scheduled' ? 'rgba(255, 107, 0, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                color: activeFilter === 'scheduled' ? 'var(--accent)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              Playing Scheduled Slate ({scheduledCount})
+            </button>
+          </div>
+        )}
+
+        {/* ── SEARCH INPUT TOOLBAR ───────────────────────────────────── */}
+        {sortedPlayers.length > 0 && (
+          <div className="players-search-toolbar" style={{ margin: 0, flex: 1, minWidth: 260, justifyContent: 'flex-end' }}>
+            <div className="players-search-box" style={{ maxWidth: 360, width: '100%' }}>
+              <Search size={15} className="search-icon" aria-hidden="true" />
+              <input
+                type="text"
+                className="players-search-input"
+                placeholder="Search players by name, team, or opponent..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                aria-label="Search players by name, team, or opponent"
+                autoComplete="off"
+                spellCheck="false"
+              />
+              {isSearching && (
+                <button
+                  type="button"
+                  className="search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  title="Clear search"
+                  aria-label="Clear search text"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {isSearching && (
+              <div className="search-status-tag">
+                <Users size={12} style={{ marginRight: 4 }} />
+                <span>{filteredPlayers.length} {filteredPlayers.length === 1 ? 'match' : 'matches'}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ── CONTENT AREA ───────────────────────────────────────────── */}
-      {!slateAlignment.isAligned ? (
-        slateAlignment.status === 'OFF_DAY' ? (
-          <div className="empty-state schedule-empty-state">
-            <Calendar size={36} className="empty-icon text-muted" />
-            <div className="empty-title">{slateAlignment.title}</div>
-            <div className="empty-subtitle">{slateAlignment.subtitle}</div>
-          </div>
-        ) : slateAlignment.status === 'STALE' ? (
-          <div className="empty-state schedule-empty-state">
-            <ShieldAlert size={36} className="empty-icon text-muted" />
-            <div className="empty-title">{slateAlignment.title}</div>
-            <div className="empty-subtitle">{slateAlignment.subtitle}</div>
-          </div>
-        ) : slateAlignment.status === 'SYNCING' ? (
-          <div className="empty-state schedule-empty-state">
-            <Activity size={36} className="empty-icon text-muted" />
-            <div className="empty-title">{slateAlignment.title}</div>
-            <div className="empty-subtitle">{slateAlignment.subtitle}</div>
-          </div>
-        ) : slateAlignment.status === 'TODAY_ACTIVE' ? (
-          <div className="empty-state schedule-empty-state">
-            <Activity size={36} className="empty-icon text-muted" />
-            <div className="empty-title">{slateAlignment.title}</div>
-            <div className="empty-subtitle">{slateAlignment.subtitle}</div>
-          </div>
-        ) : slateAlignment.status === 'FUTURE_SLATE' ? (
-          <div className="empty-state schedule-empty-state">
-            <Calendar size={36} className="empty-icon text-muted" />
-            <div className="empty-title">{slateAlignment.title}</div>
-            <div className="empty-subtitle">{slateAlignment.subtitle}</div>
-          </div>
-        ) : (
-          <div className="empty-state schedule-empty-state">
-            <ShieldAlert size={36} className="empty-icon text-muted" />
-            <div className="empty-title">{slateAlignment.title}</div>
-            <div className="empty-subtitle">{slateAlignment.subtitle}</div>
-          </div>
-        )
-      ) : sortedPlayers.length === 0 ? (
+      {sortedPlayers.length === 0 ? (
         <div className="empty-state" style={{ padding: '60px 20px', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>
-            No active players available for tomorrow's confirmed slate.
+            No player predictions available in current dataset.
           </div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#555', marginTop: 8 }}>
-            Players will appear once available rosters for tomorrow's games are loaded.
+            Player predictions will appear once model inference outputs are published.
           </div>
         </div>
       ) : isSearching && filteredPlayers.length === 0 ? (
@@ -279,7 +357,7 @@ export default function TopPlayersSection({
           <Search size={32} className="search-empty-icon" />
           <div className="search-empty-title">No players found matching "{searchQuery}"</div>
           <div className="search-empty-subtitle">
-            Try searching by first name, last name, team, or opponent.
+            Try searching by first name, last name, team, or opponent across the complete pool.
           </div>
           <button
             type="button"

@@ -218,7 +218,7 @@ def test_publish_and_download_serving_snapshot_staging_flow(tmp_path, sample_ser
     df_home.to_parquet(data_dir / "frontend_home.parquet")
 
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_et = now_et.date().strftime("%Y-%m-%d")
     df_sched = pd.DataFrame([{
         "game_id": "0022400999",
         "game_date": tomorrow_et,
@@ -956,7 +956,7 @@ def test_serving_publication_failure_leaves_previous_manifest_intact(tmp_path, s
     df_home.to_parquet(data_dir / "frontend_home.parquet")
 
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_et = now_et.date().strftime("%Y-%m-%d")
     df_sched = pd.DataFrame([{
         "game_id": "0022400999",
         "game_date": tomorrow_et,

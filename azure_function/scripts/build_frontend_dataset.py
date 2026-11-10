@@ -88,7 +88,7 @@ def validate_and_load_tomorrow_schedule(
         (status, normalized_schedule_df, schedule_date_str)
         where status is one of: 'CONFIRMED', 'OFF_DAY', 'STALE', 'SCHEDULE_UNAVAILABLE'
     """
-    # Determine reference tomorrow in America/New_York
+    # Determine authoritative target date in America/New_York (today ET at 1 PM IST)
     if reference_time is None:
         now_et = datetime.now(ZoneInfo("America/New_York"))
     else:
@@ -97,7 +97,8 @@ def validate_and_load_tomorrow_schedule(
         else:
             now_et = reference_time.astimezone(ZoneInfo("America/New_York"))
 
-    tomorrow_et = (now_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+    target_et = now_et.date().strftime("%Y-%m-%d")
+    tomorrow_et = target_et
 
     # 1. Direct DataFrame overrides (e.g. unit tests)
     if schedule_df is not None:
@@ -179,7 +180,7 @@ def validate_and_load_tomorrow_schedule(
         logger.warning("Unreadable schedule parquet artifact: %s", e)
         return ("SCHEDULE_UNAVAILABLE", pd.DataFrame(), None)
 
-    # Determine reference tomorrow in America/New_York
+    # Determine authoritative target date in America/New_York (today ET at 1 PM IST)
     if reference_time is None:
         now_et = datetime.now(ZoneInfo("America/New_York"))
     else:
@@ -188,7 +189,8 @@ def validate_and_load_tomorrow_schedule(
         else:
             now_et = reference_time.astimezone(ZoneInfo("America/New_York"))
 
-    tomorrow_et = (now_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+    target_et = now_et.date().strftime("%Y-%m-%d")
+    tomorrow_et = target_et
 
     # Future-dated check
     if sched_date > tomorrow_et:

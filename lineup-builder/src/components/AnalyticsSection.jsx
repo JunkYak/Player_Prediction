@@ -158,6 +158,18 @@ export default function AnalyticsSection({
         vA = a.teamName || '';
         vB = b.teamName || '';
         return tableSortAsc ? vA.localeCompare(vB) : vB.localeCompare(vA);
+      } else if (tableSortField === 'ranking_score') {
+        vA = a.ranking_score ?? a.predicted_rating ?? -999;
+        vB = b.ranking_score ?? b.predicted_rating ?? -999;
+      } else if (tableSortField === 'season_performance_bonus') {
+        vA = a.season_performance_bonus ?? 0;
+        vB = b.season_performance_bonus ?? 0;
+      } else if (tableSortField === 'season_avg_rating') {
+        vA = a.season_avg_rating ?? a.season_average_rating ?? -999;
+        vB = b.season_avg_rating ?? b.season_average_rating ?? -999;
+      } else if (tableSortField === 'season_game_count') {
+        vA = a.season_game_count ?? a.season_games_played ?? 0;
+        vB = b.season_game_count ?? b.season_games_played ?? 0;
       } else if (tableSortField === 'delta') {
         vA = a.deltaVal ?? -999;
         vB = b.deltaVal ?? -999;
@@ -311,7 +323,14 @@ export default function AnalyticsSection({
 
           {/* Active Player Card Header */}
           {activeSelectedPlayer && (
-            <div className="active-player-banner">
+            <div
+              className="active-player-banner"
+              onClick={() => onDetail && onDetail(activeSelectedPlayer)}
+              role="button"
+              tabIndex={0}
+              title="Click to view comprehensive player intelligence"
+              style={{ cursor: 'pointer' }}
+            >
               <img
                 src={activeSelectedPlayer.headshot || ''}
                 alt={activeSelectedPlayer.playerName}
@@ -329,8 +348,36 @@ export default function AnalyticsSection({
               </div>
 
               <div className="banner-stat-box">
-                <div className="banner-stat-label">Model Projection</div>
+                <div className="banner-stat-label">Model Rating</div>
                 <div className="banner-stat-value">{activeSelectedPlayer.predicted_rating.toFixed(2)}</div>
+              </div>
+
+              <div className="banner-stat-box">
+                <div className="banner-stat-label">Season Bonus</div>
+                <div className="banner-stat-value text-accent font-bold">
+                  +{Number(activeSelectedPlayer.season_performance_bonus || 0).toFixed(1)}
+                </div>
+              </div>
+
+              <div className="banner-stat-box">
+                <div className="banner-stat-label">Ranking Score</div>
+                <div className="banner-stat-value text-positive font-bold">
+                  {Number(activeSelectedPlayer.ranking_score || activeSelectedPlayer.predicted_rating).toFixed(2)}
+                </div>
+              </div>
+
+              <div className="banner-stat-box">
+                <div className="banner-stat-label">Season Avg</div>
+                <div className="banner-stat-value">
+                  {activeSelectedPlayer.season_avg_rating ? Number(activeSelectedPlayer.season_avg_rating).toFixed(2) : (activeSelectedPlayer.season_average_rating ? Number(activeSelectedPlayer.season_average_rating).toFixed(2) : '—')}
+                </div>
+              </div>
+
+              <div className="banner-stat-box">
+                <div className="banner-stat-label">Games</div>
+                <div className="banner-stat-value">
+                  {activeSelectedPlayer.season_game_count ?? activeSelectedPlayer.season_games_played ?? 0}
+                </div>
               </div>
 
               <div className="banner-stat-box">
@@ -345,7 +392,16 @@ export default function AnalyticsSection({
                 </div>
               </div>
 
-              <div className="banner-action-wrap">
+              <div className="banner-action-wrap" onClick={e => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="tab-btn active"
+                  onClick={() => onDetail && onDetail(activeSelectedPlayer)}
+                  style={{ marginRight: 8, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}
+                  title="View complete player intel modal"
+                >
+                  View Intel
+                </button>
                 <LineupActionButton
                   player={activeSelectedPlayer}
                   slots={slots}
@@ -660,13 +716,23 @@ export default function AnalyticsSection({
                   Team {tableSortField === 'teamName' ? (tableSortAsc ? '▲' : '▼') : ''}
                 </th>
                 <th>Status</th>
+                <th onClick={() => handleTableSort('ranking_score')} className="sortable-th text-right">
+                  Ranking Score {tableSortField === 'ranking_score' ? (tableSortAsc ? '▲' : '▼') : ''}
+                </th>
+                <th onClick={() => handleTableSort('season_performance_bonus')} className="sortable-th text-right">
+                  Bonus {tableSortField === 'season_performance_bonus' ? (tableSortAsc ? '▲' : '▼') : ''}
+                </th>
+                <th onClick={() => handleTableSort('predicted_rating')} className="sortable-th text-right">
+                  Model Rating {tableSortField === 'predicted_rating' ? (tableSortAsc ? '▲' : '▼') : ''}
+                </th>
+                <th onClick={() => handleTableSort('season_avg_rating')} className="sortable-th text-right">
+                  Season Avg {tableSortField === 'season_avg_rating' ? (tableSortAsc ? '▲' : '▼') : ''}
+                </th>
+                <th onClick={() => handleTableSort('season_game_count')} className="sortable-th text-right">
+                  Games {tableSortField === 'season_game_count' ? (tableSortAsc ? '▲' : '▼') : ''}
+                </th>
                 <th onClick={() => handleTableSort('lastGame')} className="sortable-th text-right">
                   Last Game {tableSortField === 'lastGame' ? (tableSortAsc ? '▲' : '▼') : ''}
-                </th>
-                <th className="text-right">3-Game Avg</th>
-                <th className="text-right">7-Game Avg</th>
-                <th onClick={() => handleTableSort('predicted_rating')} className="sortable-th text-right">
-                  Predicted Rating {tableSortField === 'predicted_rating' ? (tableSortAsc ? '▲' : '▼') : ''}
                 </th>
                 <th onClick={() => handleTableSort('delta')} className="sortable-th text-right">
                   Change {tableSortField === 'delta' ? (tableSortAsc ? '▲' : '▼') : ''}
@@ -681,6 +747,10 @@ export default function AnalyticsSection({
                 const delta = p.deltaVal;
                 const isPositive = delta !== null && delta > 0;
                 const isNegative = delta !== null && delta < 0;
+                const bonus = Number(p.season_performance_bonus || 0);
+                const rankScore = Number(p.ranking_score || p.predicted_rating);
+                const seasonAvg = p.season_avg_rating ?? p.season_average_rating;
+                const gamesCount = p.season_game_count ?? p.season_games_played ?? 0;
 
                 return (
                   <tr
@@ -708,17 +778,23 @@ export default function AnalyticsSection({
                     <td>
                       <StatusBadge status={p.status} />
                     </td>
+                    <td className="text-right font-mono font-bold text-positive">
+                      {rankScore.toFixed(2)}
+                    </td>
+                    <td className="text-right font-mono text-accent font-bold">
+                      +{bonus.toFixed(1)}
+                    </td>
+                    <td className="text-right font-mono font-bold">
+                      {p.predicted_rating.toFixed(2)}
+                    </td>
+                    <td className="text-right font-mono text-muted">
+                      {typeof seasonAvg === 'number' ? seasonAvg.toFixed(2) : '—'}
+                    </td>
+                    <td className="text-right font-mono text-muted">
+                      {gamesCount}
+                    </td>
                     <td className="text-right font-mono">
                       {p.lastGameVal !== null ? p.lastGameVal.toFixed(2) : '—'}
-                    </td>
-                    <td className="text-right font-mono text-muted">
-                      {p.last3Val !== null ? p.last3Val.toFixed(2) : '—'}
-                    </td>
-                    <td className="text-right font-mono text-muted">
-                      {p.last7Val !== null ? p.last7Val.toFixed(2) : '—'}
-                    </td>
-                    <td className="text-right font-mono font-bold text-accent">
-                      {p.predicted_rating.toFixed(2)}
                     </td>
                     <td className="text-right font-mono">
                       {delta !== null ? (

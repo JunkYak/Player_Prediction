@@ -17,7 +17,7 @@ from tests.test_api_players import make_test_df
 def test_schedule_endpoint_confirmed_games(tmp_path):
     """Verify /api/v1/schedule/tomorrow returns 200 with CONFIRMED status and matchups."""
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_et = now_et.date().strftime("%Y-%m-%d")
 
     # Serving artifacts
     df_home = make_test_df(num_rows=2, game_date=[tomorrow_et, tomorrow_et])
@@ -81,7 +81,7 @@ def test_schedule_endpoint_confirmed_games(tmp_path):
 def test_schedule_endpoint_off_day(tmp_path):
     """Verify /api/v1/schedule/tomorrow returns 200 with OFF_DAY and games_scheduled=False."""
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_et = now_et.date().strftime("%Y-%m-%d")
 
     df_home = make_test_df(num_rows=0)
     df_all = make_test_df(num_rows=5)
@@ -306,7 +306,7 @@ def test_schedule_endpoint_malformed_metadata_raises_503(tmp_path):
 def test_schedule_endpoint_fetch_failed_status_raises_503(tmp_path):
     """Metadata marked FETCH_FAILED must return HTTP 503, never HTTP 200."""
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_et = now_et.date().strftime("%Y-%m-%d")
 
     df_home = make_test_df(num_rows=2)
     df_all = make_test_df(num_rows=5)
@@ -336,7 +336,7 @@ def test_schedule_endpoint_fetch_failed_status_raises_503(tmp_path):
 def test_schedule_endpoint_empty_parquet_without_off_day_metadata_raises_503(tmp_path):
     """Empty parquet cannot be inferred as OFF_DAY without explicit upstream metadata."""
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_et = now_et.date().strftime("%Y-%m-%d")
 
     df_home = make_test_df(num_rows=2)
     df_all = make_test_df(num_rows=5)
@@ -368,7 +368,7 @@ def test_schedule_endpoint_empty_parquet_without_off_day_metadata_raises_503(tmp
 def test_schedule_endpoint_row_count_mismatch_raises_503(tmp_path):
     """Discrepancy between Parquet rows and metadata games_count must raise 503."""
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    tomorrow_et = (now_et + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_et = now_et.date().strftime("%Y-%m-%d")
 
     df_home = make_test_df(num_rows=2)
     df_all = make_test_df(num_rows=5)

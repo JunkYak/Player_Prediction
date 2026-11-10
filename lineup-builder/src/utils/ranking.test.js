@@ -136,5 +136,10 @@ describe('Top Players Ranking Score & Presentation Semantics', () => {
 
     assert.equal(effectiveMultiplier, 2.1);
     assert.equal(projectedSlotValue.toFixed(2), '5.71');
+
+    // Regression guard: strictly distinguish approved formula from erroneous (1 + slotMultiplier + seasonBonus)
+    const erroneousValue = rawPred * (1.0 + slotMultiplier + seasonBonus);
+    assert.equal(erroneousValue.toFixed(2), '8.43');
+    assert.notEqual(projectedSlotValue.toFixed(2), erroneousValue.toFixed(2));
   });
 });

@@ -116,11 +116,19 @@ def test_starting_five_additive_multiplier_semantics():
     slot_multiplier = 1.6  # Base slot 3
     season_bonus = 0.5     # Candidate D bonus
 
+    # Approved semantics:
+    # effective_multiplier = slot_multiplier + season_performance_bonus
+    # projected_slot_value = predicted_rating * effective_multiplier
     effective_multiplier = slot_multiplier + season_bonus
     projected_slot_value = raw_pred * effective_multiplier
 
     assert effective_multiplier == 2.1
     assert round(projected_slot_value, 2) == round(2.72 * 2.1, 2)  # 5.71
+
+    # Regression guard: strictly distinguish approved formula from erroneous (1 + slot_mult + bonus)
+    erroneous_value = raw_pred * (1.0 + slot_multiplier + season_bonus)
+    assert round(erroneous_value, 2) == round(2.72 * 3.1, 2)  # 8.43
+    assert round(projected_slot_value, 2) != round(erroneous_value, 2)
 
 
 def test_api_exposes_ranking_score_and_preserves_compatibility(client):

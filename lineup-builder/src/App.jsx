@@ -345,7 +345,9 @@ export default function App() {
 
           {activeSection === 'players' && (
             <TopPlayersSection
-              players={homeData}
+              players={allData && allData.length > 0 ? allData : homeData}
+              allPlayers={allData}
+              homePlayers={homeData}
               gameDate={gameDate}
               tomorrowSchedule={tomorrowSchedule}
               onAdd={handleAdd}

@@ -1,0 +1,18 @@
+{
+  "active_version": "model_202526_production",
+  "model_path": "versions/model_202526_production/rating_model.pkl",
+  "metadata_path": "versions/model_202526_production/model_metadata.json",
+  "sha256": "71e19ab50e35d6bf0dbdca92599b1b3f5bcca4dc17d3c614f69b1b0727a4bf11",
+  "season_boundary": "2026-10-20",
+  "feature_schema": [
+    "last_game",
+    "last3_avg",
+    "last5_avg",
+    "last7_avg",
+    "games_played_before_target",
+    "expand_mean",
+    "days_since_prev_game"
+  ],
+  "promoted_at": "2026-11-10T14:00:00.000000+00:00",
+  "is_active": true
+}

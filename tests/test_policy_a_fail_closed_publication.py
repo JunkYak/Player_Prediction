@@ -115,7 +115,7 @@ def setup_serving_data(tmp_path):
     df_all.to_parquet(data_dir / "frontend_all.parquet", index=False)
     df_home.to_parquet(data_dir / "frontend_home.parquet", index=False)
 
-    tomorrow_ny = (now_ny + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_ny = now_ny.date().strftime("%Y-%m-%d")
     sched_record = {
         "game_id": "0022400999",
         "game_date": tomorrow_ny,

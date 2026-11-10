@@ -331,10 +331,10 @@ def validate_schedule_artifact(
     sched_date_norm = sched_date[:10]
     if enforce_tomorrow_date:
         now_et = datetime.now(ZoneInfo("America/New_York"))
-        tomorrow_et_date = (now_et.date() + timedelta(days=1)).strftime("%Y-%m-%d")
-        if sched_date_norm != tomorrow_et_date:
+        target_et_date = now_et.date().strftime("%Y-%m-%d")
+        if sched_date_norm != target_et_date:
             raise ValueError(
-                f"Schedule target date mismatch: expected tomorrow ET ({tomorrow_et_date}), got {sched_date_norm}."
+                f"Schedule target date mismatch: expected target ET ({target_et_date}), got {sched_date_norm}."
             )
 
     # Consistency checks between metadata and parquet
@@ -723,6 +723,19 @@ def publish_serving_snapshot(
     # 3. Mandatory schedule artifact and metadata validation (fail closed before any upload)
     meta_sched = validate_schedule_artifact(str(tomorrow_path), str(sched_meta_path), enforce_tomorrow_date=True)
 
+    # 3b. Mandatory model validation (fail closed before any upload)
+    try:
+        from scripts.model_registry import resolve_active_model, ModelValidationError
+    except ImportError:
+        from model_registry import resolve_active_model, ModelValidationError
+
+    models_dir = os.environ.get("PROPREDICT_MODELS_DIR", "models")
+    try:
+        _, active_model_info = resolve_active_model(base_dir=models_dir, fail_closed=True)
+    except Exception as mve:
+        logger.error("Snapshot publication blocked: active model validation failed: %s", mve)
+        raise RuntimeError(f"Snapshot publication blocked: active model validation failed: {mve}") from mve
+
     # 4. Build unique snapshot ID
     timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     sha_suffix = (git_sha or os.environ.get("GITHUB_SHA", uuid.uuid4().hex))[:8]
@@ -734,6 +747,13 @@ def publish_serving_snapshot(
         "published_at": datetime.now(timezone.utc).isoformat(),
         "git_sha": git_sha or os.environ.get("GITHUB_SHA", "unknown"),
         "pipeline_run_id": pipeline_run_id or os.environ.get("GITHUB_RUN_ID", "manual"),
+        "model_info": {
+            "model_version": active_model_info.get("active_version", "unknown"),
+            "sha256": active_model_info.get("sha256", ""),
+            "season_boundary": active_model_info.get("season_boundary", "2026-10-20"),
+            "promoted_at": active_model_info.get("promoted_at", ""),
+            "is_validated": active_model_info.get("is_validated", True),
+        },
         "data_freshness": {
             "primary_configured_provider": ingestion_meta.get("primary_configured_provider", "nba_stats"),
             "actual_provider": ingestion_meta.get("actual_provider", ingestion_meta.get("source", "unknown")),
